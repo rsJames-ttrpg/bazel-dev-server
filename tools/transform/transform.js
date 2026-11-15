@@ -43,7 +43,7 @@ export function transformSource({ code, filename, dev, compilerOptions }) {
   return {
     code: out.code,
     meta: {
-      digest: createHash("sha256").update(code).digest("hex"),
+      digest: createHash("sha256").update(out.code).digest("hex"),
       refresh: dev && isJsx && out.code.includes("$RefreshReg$"),
       imports: /** @type {string[]} */ (specifiers),
     },

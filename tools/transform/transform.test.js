@@ -30,3 +30,14 @@ test("imports hold static imports and re-exports only", () => {
   assert.ok(r.meta.imports.includes("./a"));
   assert.ok(!r.meta.imports.includes("./lazy"));
 });
+test("digest hashes the output: a type-only edit keeps it", () => {
+  const a = transformSource({ code: "export const n: number = 1;", filename: "f.ts", dev: false, compilerOptions: opts });
+  const b = transformSource({ code: "export const n: 1 = 1;", filename: "f.ts", dev: false, compilerOptions: opts });
+  assert.equal(a.meta.digest, b.meta.digest);
+});
+test("digest hashes the output: dev and prod outputs differ", () => {
+  const code = "export const A = () => <div/>;";
+  const a = transformSource({ code, filename: "A.tsx", dev: true, compilerOptions: opts });
+  const b = transformSource({ code, filename: "A.tsx", dev: false, compilerOptions: opts });
+  assert.notEqual(a.meta.digest, b.meta.digest);
+});
