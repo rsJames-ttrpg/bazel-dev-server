@@ -1,5 +1,6 @@
 load("//bazel/js:dev.bzl", "dev_config")
 load("//bazel/js:js_library.bzl", "js_library")
+load("//bazel/js:manifest.bzl", "app_manifest")
 load("//bazel/js:transform.bzl", "transform_modules")
 
 js_library(
@@ -15,7 +16,14 @@ transform_modules(
     deps = [":src"],
 )
 
+app_manifest(
+    name = "hello.manifest",
+    entry = "src/main.tsx",
+    index_html = "index.html",
+    modules = ":hello.modules",
+)
+
 dev_config(
-    name = "hello.modules.dev",
-    target = ":hello.modules",
+    name = "hello.manifest.dev",
+    target = ":hello.manifest",
 )

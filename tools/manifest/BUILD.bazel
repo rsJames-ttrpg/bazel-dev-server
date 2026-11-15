@@ -1,0 +1,14 @@
+load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_test")
+
+js_test(
+    name = "write_manifest_test",
+    data = ["write_manifest.js"],
+    entry_point = "write_manifest.test.js",
+)
+
+js_binary(
+    name = "write_manifest",
+    data = ["write_manifest.js"],
+    entry_point = "write_manifest.js",
+    visibility = ["//visibility:public"],
+)
