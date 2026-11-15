@@ -1,0 +1,21 @@
+load("//bazel/js:dev.bzl", "dev_config")
+load("//bazel/js:js_library.bzl", "js_library")
+load("//bazel/js:transform.bzl", "transform_modules")
+
+js_library(
+    name = "src",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+    ], allow_empty = True),
+)
+
+transform_modules(
+    name = "hello.modules",
+    deps = [":src"],
+)
+
+dev_config(
+    name = "hello.modules.dev",
+    target = ":hello.modules",
+)
