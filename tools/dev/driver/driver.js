@@ -30,7 +30,10 @@ export function createDriver({
   const builder = createBuilder({
     workspaceDir,
     target,
-    onWaiting: () => emitter.emit("waiting"),
+    onWaiting: () => {
+      log("waiting for Bazel server (another command holds the lock)");
+      emitter.emit("waiting");
+    },
   });
 
   let inFlight = false;

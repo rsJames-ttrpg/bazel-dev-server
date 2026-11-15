@@ -61,3 +61,33 @@ test("a synchronous spawn failure resolves as a failed build", async () => {
   const r = await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
   assert.equal(r.ok, false); assert.match(r.error, /ENOENT/);
 });
+test("waits for stderr to end after exit before reporting the tail", async () => {
+  const spawn = () => {
+    const child = new EventEmitter();
+    child.stderr = new EventEmitter(); child.stderr.readableEnded = false;
+    setTimeout(() => {
+      child.emit("exit", 1);
+      setTimeout(() => { child.stderr.emit("data", Buffer.from("ERROR: late\n")); child.stderr.readableEnded = true; child.stderr.emit("end"); }, 20);
+    }, 0);
+    return child;
+  };
+  const r = await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
+  assert.equal(r.ok, false); assert.match(r.error, /late/);
+});
+test("a stderr that never ends is waited for at most 500ms", async () => {
+  const spawn = () => {
+    const child = new EventEmitter();
+    child.stderr = new EventEmitter(); child.stderr.readableEnded = false;
+    setTimeout(() => child.emit("exit", 0), 0);
+    return child;
+  };
+  const t0 = performance.now();
+  const r = await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
+  assert.equal(r.ok, true);
+  assert.ok(performance.now() - t0 < 1500);
+});
+test("stdout is not piped", async () => {
+  const { spawn, spawned } = fakeSpawn((c) => c.emit("exit", 0));
+  await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
+  assert.deepEqual(spawned[0].opts.stdio, ["ignore", "ignore", "pipe"]);
+});

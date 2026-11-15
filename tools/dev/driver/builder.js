@@ -4,6 +4,7 @@ import { spawn as nodeSpawn } from "node:child_process";
 /** @typedef {{ ok: true, ms: number } | { ok: false, error: string, ms: number }} BuildResult */
 
 const TAIL_LINES = 60;
+const STDERR_DRAIN_MS = 500;
 
 /** @param {NodeJS.ProcessEnv} env */
 function nestedEnv(env) {
@@ -45,7 +46,7 @@ export function createBuilder({
         child = spawn(bazel, ["build", target], {
           cwd: workspaceDir,
           env: nestedEnv(process.env),
-          stdio: ["ignore", "pipe", "pipe"],
+          stdio: ["ignore", "ignore", "pipe"],
         });
       } catch (err) {
         resolve({
@@ -80,11 +81,29 @@ export function createBuilder({
         for (const l of parts) pushLine(l);
       });
 
+      // `exit` can fire before stderr has drained; wait for its `end` (capped, since
+      // a grandchild holding the pipe open would keep it from ending) before
+      // reading the tail.
       child.on("exit", (/** @type {number | null} */ code) => {
         clearTimeout(timer);
-        if (partial) pushLine(partial);
-        const ms = Math.round(performance.now() - started);
-        resolve(code === 0 ? { ok: true, ms } : { ok: false, error: lines.join("\n"), ms });
+        const finish = () => {
+          if (partial) pushLine(partial);
+          partial = "";
+          const ms = Math.round(performance.now() - started);
+          resolve(code === 0 ? { ok: true, ms } : { ok: false, error: lines.join("\n"), ms });
+        };
+        const stderr = child.stderr;
+        if (!stderr || stderr.readableEnded !== false) {
+          finish();
+          return;
+        }
+        const cap = setTimeout(done, STDERR_DRAIN_MS);
+        function done() {
+          clearTimeout(cap);
+          stderr.off("end", done);
+          finish();
+        }
+        stderr.once("end", done);
       });
       child.on("error", (/** @type {Error} */ err) => {
         clearTimeout(timer);

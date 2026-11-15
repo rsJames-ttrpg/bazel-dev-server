@@ -74,3 +74,23 @@ test("npm and index changes appear in the built event and the log", async () => 
   const built = s.events.find(([e]) => e === "built")[1];
   assert.deepEqual(built.other, ["npm", "index"]);
 });
+
+test("waiting for the Bazel lock is logged and emitted", async () => {
+  const logs = [];
+  let fireChange;
+  const watcher = { on: (_e, cb) => { fireChange = cb; }, close: async () => {} };
+  const driver = createDriver({
+    workspaceDir: "/w", target: "//a:b", manifestPath: "/m.json", log: (l) => logs.push(l),
+    createWatcher: () => watcher,
+    createBuilder: ({ onWaiting }) => ({ request: async () => { onWaiting(); return { ok: true, ms: 1 }; } }),
+    loadManifest: async () => mk({ a: "1" }),
+  });
+  let waiting = 0;
+  driver.on("waiting", () => { waiting++; });
+  await driver.start();
+  fireChange(["/w/f.ts"]);
+  await sleep(50);
+  await driver.stop();
+  assert.equal(waiting, 1);
+  assert.equal(logs[0], "waiting for Bazel server (another command holds the lock)");
+});
