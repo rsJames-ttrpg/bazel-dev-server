@@ -61,3 +61,16 @@ test("a failing build emits failed once and keeps the manifest", async () => {
   assert.match(s.logs[0], /^build failed in \d+ms$/);
   assert.equal(s.driver.manifest, initial);
 });
+
+test("npm and index changes appear in the built event and the log", async () => {
+  const m1 = { ...mk({ a: "1" }), indexDigest: "i1", npm: { dir: "d", digest: "n1", entries: {} } };
+  const m2 = { ...mk({ a: "1" }), indexDigest: "i2", npm: { dir: "d", digest: "n2", entries: {} } };
+  const s = setup({ builds: [{ result: { ok: true, ms: 4 } }], manifests: [m1, m2] });
+  await s.driver.start();
+  s.change();
+  await sleep(50);
+  await s.driver.stop();
+  assert.match(s.logs[0], /^built in \d+ms \(bazel 4ms\): 0 modules changed, npm changed, index changed$/);
+  const built = s.events.find(([e]) => e === "built")[1];
+  assert.deepEqual(built.other, ["npm", "index"]);
+});

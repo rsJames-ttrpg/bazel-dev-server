@@ -1,5 +1,7 @@
 // @ts-check
-import { readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -14,10 +16,10 @@ function sortedRecord(o) {
 
 /**
  * Pure: assemble the version 1 manifest. Keys are sorted so output is stable.
- * @param {{ pkg: string, entry: string, indexHtml: string, modules: ModuleInput[],
- *   npm: { dir: string, entries: Record<string, string> }, packages: Record<string, string> }} input
+ * @param {{ pkg: string, entry: string, indexHtml: string, indexDigest: string, modules: ModuleInput[],
+ *   npm: { dir: string, digest: string, entries: Record<string, string> }, packages: Record<string, string> }} input
  */
-export function buildManifest({ pkg, entry, indexHtml, modules, npm, packages }) {
+export function buildManifest({ pkg, entry, indexHtml, indexDigest, modules, npm, packages }) {
   const sorted = [...modules].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   /** @type {Record<string, { output: string, digest: string, refresh: boolean, imports: string[] }>} */
   const out = {};
@@ -29,10 +31,35 @@ export function buildManifest({ pkg, entry, indexHtml, modules, npm, packages })
     package: pkg,
     entry,
     indexHtml,
+    indexDigest,
     modules: out,
-    npm: { dir: npm.dir, entries: sortedRecord(npm.entries) },
+    npm: { dir: npm.dir, digest: npm.digest, entries: sortedRecord(npm.entries) },
     packages: sortedRecord(packages),
   };
+}
+
+/** @param {string | Buffer} data */
+const sha256 = (data) => createHash("sha256").update(data).digest("hex");
+
+/** @param {string} file */
+export function fileDigest(file) {
+  return sha256(readFileSync(file));
+}
+
+/**
+ * SHA-256 over the sorted relative file names of `dir`, each followed by that file's
+ * SHA-256. An empty `dir` (no npm directory) digests to the hash of nothing.
+ * @param {string} dir
+ */
+export function dirDigest(dir) {
+  const hash = createHash("sha256");
+  if (dir === "") return hash.digest("hex");
+  const files = /** @type {string[]} */ (readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e) => path.relative(dir, path.join(e.parentPath, e.name)).split(path.sep).join("/")))
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  for (const name of files) hash.update(`${name}\0${fileDigest(path.join(dir, name))}\n`);
+  return hash.digest("hex");
 }
 
 /** @param {string[]} argv */
@@ -87,12 +114,14 @@ function main(rawArgs) {
       throw new Error(`unknown flag ${flag}`);
     }
   }
+  const npmDir = single["--npm-dir"] ?? "";
   const manifest = buildManifest({
     pkg: single["--package"],
     entry: single["--entry"],
     indexHtml: single["--index"],
+    indexDigest: fileDigest(single["--index"]),
     modules,
-    npm: { dir: single["--npm-dir"] ?? "", entries },
+    npm: { dir: npmDir, digest: dirDigest(npmDir), entries },
     packages,
   });
   writeFileSync(single["--out"], JSON.stringify(manifest, null, 2) + "\n");

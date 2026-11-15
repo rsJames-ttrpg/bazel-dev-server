@@ -13,7 +13,9 @@ export async function loadManifest(path) {
 
 /**
  * Compare module digests per key. A null `prev` puts every key in `added`.
+ * `other` lists "npm" and/or "index" when the npm directory or index.html digest changed.
  * @param {Manifest | null} prev @param {Manifest} next
+ * @returns {{ changed: string[], added: string[], removed: string[], other: string[] }}
  */
 export function diffManifests(prev, next) {
   const before = prev ? prev.modules : {};
@@ -25,5 +27,10 @@ export function diffManifests(prev, next) {
     else if (before[key].digest !== after[key].digest) changed.push(key);
   }
   const removed = Object.keys(before).filter((k) => !(k in after));
-  return { changed, added, removed };
+  /** @type {string[]} */ const other = [];
+  if (prev) {
+    if (prev.npm?.digest !== next.npm?.digest) other.push("npm");
+    if (prev.indexDigest !== next.indexDigest) other.push("index");
+  }
+  return { changed, added, removed, other };
 }

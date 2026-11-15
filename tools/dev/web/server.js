@@ -135,8 +135,8 @@ export function createServer({ driver, executionRoot, port, log, appLabel }) {
   // After a failure the next good build reloads even with no changes, which clears
   // the overlay when an edit is reverted to the last good content.
   let failed = false;
-  driver.on("built", (/** @type {{ changed: string[], added: string[], removed: string[] }} */ e) => {
-    if (!(e.changed.length || e.added.length || e.removed.length || failed)) return;
+  driver.on("built", (/** @type {{ changed: string[], added: string[], removed: string[], other?: string[] }} */ e) => {
+    if (!(e.changed.length || e.added.length || e.removed.length || e.other?.length || failed)) return;
     failed = false;
     events = events.then(holdOutputs).then(() => broadcast({ type: "reload" }));
   });

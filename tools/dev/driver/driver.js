@@ -78,6 +78,7 @@ export function createDriver({
       let line = `built in ${Math.round(tLoaded - t0)}ms (bazel ${result.ms}ms): ${diff.changed.length} modules changed`;
       if (diff.added.length) line += `, ${diff.added.length} added`;
       if (diff.removed.length) line += `, ${diff.removed.length} removed`;
+      for (const what of diff.other) line += `, ${what} changed`;
       log(line);
       emitter.emit("built", { manifest: next, ...diff, timings });
     } catch (err) {

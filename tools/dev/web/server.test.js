@@ -43,6 +43,21 @@ test("reload only when something changed", async () => {
   assert.deepEqual(got.map((g) => g.type), ["reload", "error"]);
   ws.close(); await s.close();
 });
+test("reload when only the npm directory or index.html changed", async (t) => {
+  const { root, driver } = await fixture();
+  const s = createServer({ driver, executionRoot: root, port: 0, log: () => {}, appLabel: "//app:app" });
+  const port = await s.listen();
+  t.after(() => s.close());
+  const ws = new (await import("ws")).WebSocket(`ws://localhost:${port}/@dev/ws`);
+  const got = []; ws.on("message", (m) => got.push(JSON.parse(m.toString())));
+  await new Promise((r) => ws.on("open", r));
+  t.after(() => ws.close());
+  driver.emit("built", { manifest: driver.manifest, changed: [], added: [], removed: [], other: [] });
+  driver.emit("built", { manifest: driver.manifest, changed: [], added: [], removed: [], other: ["npm"] });
+  driver.emit("built", { manifest: driver.manifest, changed: [], added: [], removed: [], other: ["index"] });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.deepEqual(got.map((g) => g.type), ["reload", "reload"]);
+});
 test("keeps serving the last good output when a failed build deletes it", async (t) => {
   const { root, driver } = await fixture();
   const s = createServer({ driver, executionRoot: root, port: 0, log: () => {}, appLabel: "//app:app" });
