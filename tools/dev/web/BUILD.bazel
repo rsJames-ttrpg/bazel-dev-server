@@ -1,0 +1,55 @@
+load("@aspect_bazel_lib//lib:copy_to_bin.bzl", "copy_to_bin")
+load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
+
+# Entry point of react_app's <name>.dev. js_binary needs it in the output tree
+# because the binary lives in another package.
+copy_to_bin(
+    name = "main",
+    srcs = ["main.js"],
+    visibility = ["//visibility:public"],
+)
+
+js_library(
+    name = "web",
+    srcs = [
+        "client.js",
+        "html.js",
+        "main.js",
+        "rewrite.js",
+        "server.js",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//:node_modules/es-module-lexer",
+        "//:node_modules/ws",
+        "//tools/dev/driver",
+    ],
+)
+
+js_test(
+    name = "rewrite_test",
+    data = [
+        "rewrite.js",
+        "//:node_modules/es-module-lexer",
+    ],
+    entry_point = "rewrite.test.js",
+)
+
+js_test(
+    name = "html_test",
+    data = ["html.js"],
+    entry_point = "html.test.js",
+)
+
+js_test(
+    name = "server_test",
+    data = [
+        "client.js",
+        "html.js",
+        "rewrite.js",
+        "server.js",
+        "//:node_modules/es-module-lexer",
+        "//:node_modules/ws",
+    ],
+    entry_point = "server.test.js",
+)

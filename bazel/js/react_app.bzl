@@ -2,6 +2,7 @@
 
 load("@aspect_bazel_lib//lib:output_files.bzl", "output_files")
 load("@aspect_rules_esbuild//esbuild:defs.bzl", "esbuild")
+load("@aspect_rules_js//js:defs.bzl", "js_binary")
 load(":dev.bzl", "dev_config")
 load(":js_library.bzl", "js_library")
 load(":manifest.bzl", "app_manifest")
@@ -9,7 +10,7 @@ load(":npm.bzl", "npm_prebundle")
 load(":transform.bzl", "transform_modules")
 
 def react_app(name, srcs, entry, index_html, npm_imports, npm_deps, deps = [], port = 5173):
-    """Declares <name>.src, .modules, .npm, .npm.dev, .manifest, .manifest.dev and .bundle.
+    """Declares <name>.src, .modules, .npm, .npm.dev, .manifest, .manifest.dev, .dev and .bundle.
 
     Rule logic lives in the loaded .bzl files; this macro only wires targets.
 
@@ -21,9 +22,8 @@ def react_app(name, srcs, entry, index_html, npm_imports, npm_deps, deps = [], p
         npm_imports: bare specifiers the app imports from npm.
         npm_deps: linked npm package targets providing npm_imports.
         deps: js_library targets the app depends on.
-        port: dev server port; used by <name>.dev (Task 7).
+        port: dev server port of <name>.dev.
     """
-    _ = port  # @unused: consumed by <name>.dev in a later task.
 
     js_library(name = name + ".src", srcs = srcs, deps = deps)
     transform_modules(name = name + ".modules", deps = [":" + name + ".src"])
@@ -49,6 +49,28 @@ def react_app(name, srcs, entry, index_html, npm_imports, npm_deps, deps = [], p
         npm_entries = npm_entries,
     )
     dev_config(name = name + ".manifest.dev", target = ":" + name + ".manifest")
+
+    # Dev server: `bazel run :<name>.dev` serves the dev manifest and rebuilds it
+    # with a nested `bazel build` on every change.
+    js_binary(
+        name = name + ".dev",
+        entry_point = Label("//tools/dev/web:main"),
+        data = [
+            ":" + name + ".manifest.dev",
+            Label("//tools/dev/web"),
+            Label("//tools/dev/driver"),
+        ],
+        args = [
+            "--manifest",
+            "$(execpath :%s.manifest.dev)" % name,
+            "--target",
+            "//%s:%s.manifest.dev" % (native.package_name(), name),
+            "--app",
+            "//%s:%s" % (native.package_name(), name),
+            "--port",
+            str(port),
+        ],
+    )
 
     # Production bundle: esbuild over the same transformed modules, then
     # <name>.bundle/ holds index.html (entry script pointed at main.js),
