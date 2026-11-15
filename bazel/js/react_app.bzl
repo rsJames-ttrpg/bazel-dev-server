@@ -28,6 +28,12 @@ def react_app(name, srcs, entry, index_html, npm_imports, npm_deps, deps = [], p
     js_library(name = name + ".src", srcs = srcs, deps = deps)
     transform_modules(name = name + ".modules", deps = [":" + name + ".src"])
 
+    # Dev-config modules compile JSX against react/jsx-dev-runtime. Both
+    # bundles get it so the one npm_entries dict is valid in either config.
+    npm_imports = list(npm_imports)
+    if "react/jsx-runtime" in npm_imports and "react/jsx-dev-runtime" not in npm_imports:
+        npm_imports.append("react/jsx-dev-runtime")
+
     npm_entries = npm_prebundle(name + ".npm", npm_imports, npm_deps, dev = False)
     npm_prebundle(name + ".npm.dev", npm_imports, npm_deps, dev = True)
 

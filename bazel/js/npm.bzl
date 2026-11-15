@@ -44,7 +44,9 @@ def npm_prebundle(name, npm_imports, npm_deps, dev):
     esbuild(
         name = name,
         # rules_esbuild requires a file entry point; the config's plugin
-        # replaces it with one virtual entry per specifier.
+        # replaces it with one virtual entry per specifier. That override only
+        # works because output_dir = True: rules_esbuild then declares a
+        # directory instead of deriving output files from entry_points.
         entry_points = [config],
         config = config,
         deps = npm_deps,
