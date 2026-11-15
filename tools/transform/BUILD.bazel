@@ -1,0 +1,21 @@
+load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_test")
+
+js_test(
+    name = "transform_test",
+    data = [
+        "transform.js",
+        "//:node_modules/@swc/core",
+        "//:node_modules/es-module-lexer",
+    ],
+    entry_point = "transform.test.js",
+)
+
+js_binary(
+    name = "worker",
+    data = [
+        "transform.js",
+        "//:node_modules/@swc/core",
+        "//:node_modules/es-module-lexer",
+    ],
+    entry_point = "worker.js",
+)
