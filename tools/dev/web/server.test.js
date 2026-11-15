@@ -102,7 +102,17 @@ test("unresolved specifier is logged once across requests", async (t) => {
   t.after(() => s.close());
   await (await fetch(`http://localhost:${port}/app/src/main.tsx`)).text();
   await (await fetch(`http://localhost:${port}/app/src/main.tsx`)).text();
-  assert.deepEqual(lines, [`cannot resolve "./App" from app/src/main.tsx; add it to npm_imports of //app:app`]);
+  assert.deepEqual(lines, [`cannot resolve "./App" from app/src/main.tsx`]);
+});
+test("an unresolved bare specifier suggests npm_imports", async (t) => {
+  const { root, driver } = await fixture();
+  await fs.writeFile(path.join(root, "out/main.js"), `import "lodash";`);
+  const lines = [];
+  const s = createServer({ driver, executionRoot: root, port: 0, log: (l) => lines.push(l), appLabel: "//app:app" });
+  const port = await s.listen();
+  t.after(() => s.close());
+  await (await fetch(`http://localhost:${port}/app/src/main.tsx`)).text();
+  assert.deepEqual(lines, [`cannot resolve "lodash" from app/src/main.tsx; add it to npm_imports of //app:app`]);
 });
 test("first build after a failure reloads even with no changes", async (t) => {
   const { root, driver } = await fixture();

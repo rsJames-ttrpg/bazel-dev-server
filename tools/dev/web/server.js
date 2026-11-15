@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { renderIndex } from "./html.js";
-import { rewriteImports } from "./rewrite.js";
+import { isBareSpecifier, rewriteImports } from "./rewrite.js";
 
 const CLIENT_PATH = fileURLToPath(new URL("./client.js", import.meta.url));
 
@@ -92,7 +92,8 @@ export function createServer({ driver, executionRoot, port, log, appLabel }) {
     for (const spec of unresolved) {
       if (reported.has(spec)) continue;
       reported.add(spec);
-      log(`cannot resolve "${spec}" from ${key}; add it to npm_imports of ${appLabel}`);
+      const hint = isBareSpecifier(spec, manifest) ? `; add it to npm_imports of ${appLabel}` : "";
+      log(`cannot resolve "${spec}" from ${key}${hint}`);
     }
     return {
       status: 200,

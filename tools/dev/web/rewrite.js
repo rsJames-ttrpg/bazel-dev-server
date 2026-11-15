@@ -17,7 +17,24 @@ function findKey(p, manifest) {
   for (const suffix of SUFFIXES) {
     if (Object.hasOwn(manifest.modules, p + suffix)) return p + suffix;
   }
+  // `./App.js` names the output of `./App.ts(x)`, as esbuild resolves it for the bundle.
+  if (p.endsWith(".js")) {
+    const stem = p.slice(0, -".js".length);
+    for (const ext of [".ts", ".tsx"]) {
+      if (Object.hasOwn(manifest.modules, stem + ext)) return stem + ext;
+    }
+  }
   return null;
+}
+
+/**
+ * True for a specifier that only npm_imports could resolve: not relative, not
+ * absolute and not under one of the manifest's workspace packages.
+ * @param {string} spec @param {Manifest} manifest
+ */
+export function isBareSpecifier(spec, manifest) {
+  if (spec.startsWith(".") || spec.startsWith("/")) return false;
+  return !Object.keys(manifest.packages).some((name) => spec === name || spec.startsWith(name + "/"));
 }
 
 /** @param {string} spec @param {string} key @param {Manifest} manifest @returns {string | null} */
