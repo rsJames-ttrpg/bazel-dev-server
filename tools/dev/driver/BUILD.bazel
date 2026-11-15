@@ -1,0 +1,32 @@
+load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
+
+js_library(
+    name = "driver",
+    srcs = glob(
+        ["*.js"],
+        exclude = ["*.test.js"],
+    ),
+    visibility = ["//visibility:public"],
+    deps = ["//:node_modules/chokidar"],
+)
+
+js_test(
+    name = "watcher_test",
+    data = [
+        "watcher.js",
+        "//:node_modules/chokidar",
+    ],
+    entry_point = "watcher.test.js",
+)
+
+js_test(
+    name = "builder_test",
+    data = ["builder.js"],
+    entry_point = "builder.test.js",
+)
+
+js_test(
+    name = "manifest_test",
+    data = ["manifest.js"],
+    entry_point = "manifest.test.js",
+)
