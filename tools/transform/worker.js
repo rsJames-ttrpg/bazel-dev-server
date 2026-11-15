@@ -3,9 +3,6 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { transformSource } from "./transform.js";
 
-/** @type {Map<string, import("./transform.js").CompilerOptions>} */
-const tsconfigCache = new Map();
-
 /** @param {string[]} argv */
 function expandArgs(argv) {
   if (argv.length === 1 && argv[0].startsWith("@")) {
@@ -16,17 +13,13 @@ function expandArgs(argv) {
 
 /** @param {string} path */
 function loadCompilerOptions(path) {
-  let cached = tsconfigCache.get(path);
-  if (!cached) {
-    const { compilerOptions } = JSON.parse(readFileSync(path, "utf8"));
-    cached = {
-      jsx: compilerOptions.jsx,
-      target: compilerOptions.target,
-      useDefineForClassFields: compilerOptions.useDefineForClassFields,
-    };
-    tsconfigCache.set(path, cached);
-  }
-  return cached;
+  const { compilerOptions } = JSON.parse(readFileSync(path, "utf8"));
+  return {
+    jsx: compilerOptions.jsx,
+    target: compilerOptions.target,
+    useDefineForClassFields: compilerOptions.useDefineForClassFields,
+    verbatimModuleSyntax: compilerOptions.verbatimModuleSyntax ?? false,
+  };
 }
 
 /** @param {string[]} rawArgs */

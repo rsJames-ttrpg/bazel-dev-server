@@ -1,5 +1,12 @@
+load("@aspect_rules_js//js:defs.bzl", "js_library")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 
 npm_link_all_packages(name = "node_modules")
 
 exports_files(["tsconfig.json"])
+
+js_library(
+    name = "tsconfig_json",
+    srcs = ["tsconfig.json"],
+    visibility = ["//visibility:public"],
+)

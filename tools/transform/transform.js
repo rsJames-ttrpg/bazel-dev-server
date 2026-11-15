@@ -6,7 +6,7 @@ import { initSync, parse } from "es-module-lexer";
 initSync();
 
 /**
- * @typedef {{ jsx: string, target: string, useDefineForClassFields: boolean }} CompilerOptions
+ * @typedef {{ jsx: string, target: string, useDefineForClassFields: boolean, verbatimModuleSyntax?: boolean }} CompilerOptions
  * @typedef {{ digest: string, refresh: boolean, imports: string[] }} TransformMeta
  */
 
@@ -33,13 +33,13 @@ export function transformSource({ code, filename, dev, compilerOptions }) {
       target: /** @type {any} */ (compilerOptions.target.toLowerCase()),
       transform: {
         useDefineForClassFields: compilerOptions.useDefineForClassFields,
-        verbatimModuleSyntax: true,
+        verbatimModuleSyntax: compilerOptions.verbatimModuleSyntax ?? false,
         react: { runtime: "automatic", development: dev, refresh: dev },
       },
     },
   });
   const [imports] = parse(out.code);
-  const specifiers = imports.map((i) => i.n).filter((n) => typeof n === "string");
+  const specifiers = imports.filter((i) => i.d === -1).map((i) => i.n).filter((n) => typeof n === "string");
   return {
     code: out.code,
     meta: {

@@ -18,4 +18,17 @@ js_binary(
         "//:node_modules/es-module-lexer",
     ],
     entry_point = "worker.js",
+    visibility = ["//visibility:public"],
+)
+
+js_test(
+    name = "worker_test",
+    data = [
+        "transform.js",
+        "worker.js",
+        "//:node_modules/@swc/core",
+        "//:node_modules/es-module-lexer",
+        "//:tsconfig_json",
+    ],
+    entry_point = "worker.test.js",
 )

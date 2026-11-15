@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { transformSource } from "./transform.js";
-const opts = { jsx: "react-jsx", target: "ES2022", useDefineForClassFields: true };
+const opts = { jsx: "react-jsx", target: "ES2022", useDefineForClassFields: true, verbatimModuleSyntax: true };
 
 test("strips types and keeps ESM", () => {
   const r = transformSource({ code: "import x from './a'; export const n: number = 1;", filename: "f.ts", dev: false, compilerOptions: opts });
@@ -24,4 +24,9 @@ test("same input gives same digest", () => {
   const a = transformSource({ code: "export const n = 1;", filename: "f.ts", dev: false, compilerOptions: opts });
   const b = transformSource({ code: "export const n = 1;", filename: "f.ts", dev: false, compilerOptions: opts });
   assert.equal(a.meta.digest, b.meta.digest);
+});
+test("imports hold static imports and re-exports only", () => {
+  const r = transformSource({ code: "export { a } from './a'; export const f = () => import('./lazy');", filename: "f.ts", dev: false, compilerOptions: opts });
+  assert.ok(r.meta.imports.includes("./a"));
+  assert.ok(!r.meta.imports.includes("./lazy"));
 });
