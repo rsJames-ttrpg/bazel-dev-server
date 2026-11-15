@@ -40,11 +40,21 @@ export function createBuilder({
   function run() {
     const started = performance.now();
     return new Promise((resolve) => {
-      const child = spawn(bazel, ["build", target], {
-        cwd: workspaceDir,
-        env: nestedEnv(process.env),
-        stdio: ["ignore", "pipe", "pipe"],
-      });
+      let child;
+      try {
+        child = spawn(bazel, ["build", target], {
+          cwd: workspaceDir,
+          env: nestedEnv(process.env),
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+      } catch (err) {
+        resolve({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+          ms: Math.round(performance.now() - started),
+        });
+        return;
+      }
       /** @type {string[]} */
       let lines = [];
       let partial = "";
@@ -95,14 +105,12 @@ export function createBuilder({
 
   return {
     request() {
+      if (pending) return pending;
       if (!running) return start();
-      if (!pending) {
-        const current = running;
-        pending = current.then(() => {
-          pending = null;
-          return start();
-        });
-      }
+      pending = running.then(() => {
+        pending = null;
+        return start();
+      });
       return pending;
     },
   };

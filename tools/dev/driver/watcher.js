@@ -1,6 +1,25 @@
 // @ts-check
 import chokidar from "chokidar";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
+
+/**
+ * Convert a glob (`**`, `*`, `?`) to a regex over a root-relative, "/"-separated path.
+ * @param {string} glob
+ */
+function globToRegExp(glob) {
+  let re = "";
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === "*" && glob[i + 1] === "*") {
+      if (glob[i + 2] === "/") { re += "(?:.*/)?"; i += 2; }
+      else if (re.endsWith("/")) { re = re.slice(0, -1) + "(?:/.*)?"; i += 1; }
+      else { re += ".*"; i += 1; }
+    } else if (c === "*") re += "[^/]*";
+    else if (c === "?") re += "[^/]";
+    else re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${re}$`);
+}
 
 /**
  * Watch `root` and deliver every file event within one debounce window as a single
@@ -21,7 +40,15 @@ export function createWatcher({
   /** @type {NodeJS.Timeout | null} */
   let timer = null;
 
-  const fs = watch(root, { ignored, ignoreInitial: true });
+  // chokidar 4 matches string globs by equality, so apply them via a function matcher.
+  const patterns = ignored.map(globToRegExp);
+  /** @param {string} p */
+  const isIgnored = (p) => {
+    const rel = relative(root, resolve(root, p)).split("\\").join("/");
+    return rel !== "" && patterns.some((re) => re.test(rel));
+  };
+
+  const fs = watch(root, { ignored: isIgnored, ignoreInitial: true, followSymlinks: false });
   fs.on("all", (/** @type {string} */ _event, /** @type {string} */ path) => {
     pending.add(resolve(root, path));
     if (timer) clearTimeout(timer);

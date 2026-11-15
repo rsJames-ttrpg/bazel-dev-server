@@ -30,3 +30,15 @@ js_test(
     data = ["manifest.js"],
     entry_point = "manifest.test.js",
 )
+
+js_test(
+    name = "driver_test",
+    data = [
+        "builder.js",
+        "driver.js",
+        "manifest.js",
+        "watcher.js",
+        "//:node_modules/chokidar",
+    ],
+    entry_point = "driver.test.js",
+)

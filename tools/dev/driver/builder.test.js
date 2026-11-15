@@ -41,3 +41,23 @@ test("calls onWaiting when another command holds the lock", async () => {
   await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn, waitingAfterMs: 10, onWaiting: () => { waited = true; } }).request();
   assert.equal(waited, true);
 });
+test("never runs two builds at once", async () => {
+  let live = 0, max = 0;
+  const spawn = () => {
+    const child = new EventEmitter(); child.stderr = new EventEmitter();
+    live++; max = Math.max(max, live);
+    setTimeout(() => { live--; child.emit("exit", 0); }, 10);
+    return child;
+  };
+  const b = createBuilder({ workspaceDir: "/w", target: "//a:b", spawn });
+  await b.request();
+  const p1 = b.request(); const p2 = b.request();
+  await p1; await p2;
+  await b.request();
+  assert.equal(max, 1);
+});
+test("a synchronous spawn failure resolves as a failed build", async () => {
+  const spawn = () => { throw new Error("spawn ENOENT"); };
+  const r = await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
+  assert.equal(r.ok, false); assert.match(r.error, /ENOENT/);
+});

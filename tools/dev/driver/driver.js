@@ -1,17 +1,29 @@
 // @ts-check
 import { EventEmitter } from "node:events";
-import { createBuilder } from "./builder.js";
-import { diffManifests, loadManifest } from "./manifest.js";
-import { createWatcher } from "./watcher.js";
+import { createBuilder as realCreateBuilder } from "./builder.js";
+import { diffManifests, loadManifest as realLoadManifest } from "./manifest.js";
+import { createWatcher as realCreateWatcher } from "./watcher.js";
 
 /** @typedef {import("./manifest.js").Manifest} Manifest */
 
 /**
  * Watches the workspace, rebuilds the manifest target once per change burst and emits
  * `building`, `waiting`, `built` and `failed`.
- * @param {{ workspaceDir: string, target: string, manifestPath: string, log: (line: string) => void }} opts
+ * At most one build cycle (build plus manifest load) is in flight; changes during a cycle
+ * trigger exactly one more cycle afterwards.
+ * @param {{ workspaceDir: string, target: string, manifestPath: string, log: (line: string) => void,
+ *   createWatcher?: typeof realCreateWatcher, createBuilder?: typeof realCreateBuilder,
+ *   loadManifest?: typeof realLoadManifest }} opts
  */
-export function createDriver({ workspaceDir, target, manifestPath, log }) {
+export function createDriver({
+  workspaceDir,
+  target,
+  manifestPath,
+  log,
+  createWatcher = realCreateWatcher,
+  createBuilder = realCreateBuilder,
+  loadManifest = realLoadManifest,
+}) {
   const emitter = new EventEmitter();
   /** @type {ReturnType<typeof createWatcher> | null} */
   let watcher = null;
@@ -20,6 +32,26 @@ export function createDriver({ workspaceDir, target, manifestPath, log }) {
     target,
     onWaiting: () => emitter.emit("waiting"),
   });
+
+  let inFlight = false;
+  let dirty = false;
+
+  /** Serialise cycles: a change during a cycle sets `dirty`, which runs one more afterwards. */
+  async function onChange() {
+    if (inFlight) {
+      dirty = true;
+      return;
+    }
+    inFlight = true;
+    try {
+      do {
+        dirty = false;
+        await cycle();
+      } while (dirty);
+    } finally {
+      inFlight = false;
+    }
+  }
 
   /** Run one build cycle, triggered by a change. */
   async function cycle() {
@@ -63,7 +95,7 @@ export function createDriver({ workspaceDir, target, manifestPath, log }) {
       driver.manifest = await loadManifest(manifestPath);
       watcher = createWatcher({ root: workspaceDir });
       watcher.on("change", () => {
-        void cycle();
+        void onChange();
       });
       return driver.manifest;
     },
