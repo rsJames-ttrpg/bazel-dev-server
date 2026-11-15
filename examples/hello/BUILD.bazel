@@ -1,29 +1,20 @@
-load("//bazel/js:dev.bzl", "dev_config")
-load("//bazel/js:js_library.bzl", "js_library")
-load("//bazel/js:manifest.bzl", "app_manifest")
-load("//bazel/js:transform.bzl", "transform_modules")
+load("//bazel/js:react_app.bzl", "react_app")
 
-js_library(
-    name = "src",
+react_app(
+    name = "hello",
     srcs = glob([
         "src/**/*.ts",
         "src/**/*.tsx",
     ], allow_empty = True),
-)
-
-transform_modules(
-    name = "hello.modules",
-    deps = [":src"],
-)
-
-app_manifest(
-    name = "hello.manifest",
     entry = "src/main.tsx",
     index_html = "index.html",
-    modules = ":hello.modules",
-)
-
-dev_config(
-    name = "hello.manifest.dev",
-    target = ":hello.manifest",
+    npm_deps = [
+        "//:node_modules/react",
+        "//:node_modules/react-dom",
+    ],
+    npm_imports = [
+        "react",
+        "react/jsx-runtime",
+        "react-dom/client",
+    ],
 )

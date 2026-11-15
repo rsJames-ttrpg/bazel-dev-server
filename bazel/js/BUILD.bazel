@@ -1,7 +1,15 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 
+exports_files(["esbuild_prebundle.config.mjs.tpl"])
+
 bool_flag(
     name = "dev",
     build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "is_dev",
+    flag_values = {":dev": "True"},
     visibility = ["//visibility:public"],
 )
