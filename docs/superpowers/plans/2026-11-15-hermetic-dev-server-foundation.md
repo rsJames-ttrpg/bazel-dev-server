@@ -28,7 +28,7 @@
 - A module that imports an npm specifier not listed in `npm_imports`: the server serves the module with the specifier untouched and logs one clear line naming the specifier and the `react_app` target, rather than silently producing a browser error. Test in Task 7 (`rewriteImports` unresolved list).
 - A burst of hundreds of file events, such as a branch checkout: one build runs, not hundreds. Test in Task 6 (watcher debounce and builder coalescing tests).
 - Another terminal holding the Bazel server lock: the driver emits `waiting` after 2 s and the build still completes afterwards. Test in Task 6 (builder test with a fake spawn that delays output).
-- A save that changes no output, such as a comment edit that SWC strips: the cycle logs `0 modules changed` and the browser is not reloaded. Test in Task 6 (`diffManifests` equal digests) and Task 7 (no `reload` message when `changed` is empty).
+- A save that changes no output, such as a type-only edit that leaves the output unchanged: the cycle logs `0 modules changed` and the browser is not reloaded. Test in Task 6 (`diffManifests` equal digests) and Task 7 (no `reload` message when `changed` is empty).
 
 ---
 

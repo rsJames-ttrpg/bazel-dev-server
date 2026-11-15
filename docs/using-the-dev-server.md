@@ -29,14 +29,16 @@ Replace the label with your own `<name>.dev`. The dev configuration is reached o
 
 ## What the terminal prints
 
-- `dev server at http://localhost:5173` means the server is ready.
-- `built in <n>ms (bazel <m>ms): <k> modules changed` means a save triggered one nested `bazel build` of `<name>.manifest.dev`. `n` is the total time, `m` the time spent in Bazel, `k` the number of modules whose output changed. The browser then receives `reload` over the WebSocket at `/@dev/ws`.
+- `dev server at http://localhost:5173` means the server is ready. It listens on 127.0.0.1 only.
+- `built in <n>ms (bazel <m>ms): <k> modules changed` means a save triggered one nested `bazel build` of `<name>.manifest.dev`. `n` is the total time, `m` the time spent in Bazel, `k` the number of modules whose output changed. `, npm changed` or `, index changed` is appended when the npm prebundles or `index.html` changed. The browser then receives `reload` over the WebSocket at `/@dev/ws`.
 - `build failed in <n>ms` means the build failed, for example on a syntax error. The browser receives `error` and shows an overlay.
-- `cannot resolve "<spec>" from <key>; add it to npm_imports of <label>` is logged once for a bare import that is not in `npm_imports`. The import is served untouched, so it fails in the browser.
+- `cannot resolve "<spec>" from <key>; add it to npm_imports of <label>` is logged once for a bare import that is not in `npm_imports`. A relative or workspace-package import that matches no module logs `cannot resolve "<spec>" from <key>` without the suffix. Either way the import is served untouched, so it fails in the browser.
+- `waiting for Bazel server (another command holds the lock)` means another Bazel command in the workspace holds the lock; the build starts when it finishes.
+- `dev server: the running binary was built with different Bazel flags than the nested build will use (...)` means `bazel run` was given flags that change the output path. Put them in `.bazelrc` so the nested build uses them too.
 
-## Warm save-to-reload latency
+## Warm build-cycle time
 
-Measured on `examples/hello`, alternating the `<h1>` text ten times with the server already running. The median is 187 ms.
+Measured on `examples/hello`, alternating the `<h1>` text ten times with the server already running. Each value is the build-cycle time: from the watcher event to the reload message (the `built in` figure of the log line). It does not include the editor save or the browser reload. The median is 187 ms.
 
 | Save | Built in (ms) | Bazel (ms) |
 | --- | --- | --- |
@@ -51,7 +53,7 @@ Measured on `examples/hello`, alternating the `<h1>` text ten times with the ser
 | 9 | 234 | 234 |
 | 10 | 250 | 249 |
 
-This is the time to finish the build; the browser reload follows immediately.
+The browser then reloads, which this table does not measure.
 
 ## Differences from production
 
