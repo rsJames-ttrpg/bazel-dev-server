@@ -115,9 +115,20 @@ export function createServer({ driver, executionRoot, port, log, appLabel }) {
     res.end(req.method === "HEAD" ? undefined : result.body);
   });
 
+  /**
+   * A browser page on another site may open a WebSocket to localhost; refuse any
+   * Origin other than the dev server's own. Non-browser clients send no Origin.
+   * @param {string | undefined} origin
+   */
+  function allowedOrigin(origin) {
+    if (origin === undefined) return true;
+    const bound = /** @type {import("node:net").AddressInfo} */ (server.address()).port;
+    return origin === `http://localhost:${bound}` || origin === `http://127.0.0.1:${bound}`;
+  }
+
   const wss = new WebSocketServer({ noServer: true });
   server.on("upgrade", (req, socket, head) => {
-    if (new URL(req.url ?? "/", "http://localhost").pathname !== "/@dev/ws") {
+    if (new URL(req.url ?? "/", "http://localhost").pathname !== "/@dev/ws" || !allowedOrigin(req.headers.origin)) {
       socket.destroy();
       return;
     }
@@ -151,7 +162,7 @@ export function createServer({ driver, executionRoot, port, log, appLabel }) {
       await holdOutputs();
       return new Promise((resolve, reject) => {
         server.once("error", reject);
-        server.listen(port, () => {
+        server.listen(port, "127.0.0.1", () => {
           server.off("error", reject);
           resolve(/** @type {import("node:net").AddressInfo} */ (server.address()).port);
         });

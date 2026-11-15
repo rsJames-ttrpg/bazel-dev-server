@@ -31,12 +31,22 @@ const env = Object.fromEntries(
     ([k]) => !k.startsWith("JS_BINARY__") && !k.startsWith("RUNFILES") && k !== "BAZEL_BINDIR",
   ),
 );
-const executionRoot = execFileSync("bazel", ["info", "execution_root"], {
-  cwd: workspaceDir,
-  env,
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "inherit"],
-}).trim();
+/** @param {string[]} args @returns {string} trimmed stdout of a nested bazel command */
+const bazel = (args) =>
+  execFileSync("bazel", args, { cwd: workspaceDir, env, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }).trim();
+
+const executionRoot = bazel(["info", "execution_root"]);
+
+// The nested build sees only .bazelrc, not the flags of the outer `bazel run`. If
+// those flags changed the output path, the nested build would write a manifest
+// this server never reads, so refuse to start.
+const nestedManifest = bazel(["cquery", "--output=files", "--noshow_progress", "--ui_event_filters=-info", target]);
+if (nestedManifest !== manifest) {
+  console.error(
+    `dev server: the running binary was built with different Bazel flags than the nested build will use (${manifest} vs ${nestedManifest}); put those flags in .bazelrc and run again`,
+  );
+  process.exit(1);
+}
 
 const log = console.log;
 const driver = createDriver({ workspaceDir, target, manifestPath: path.join(executionRoot, manifest), log });

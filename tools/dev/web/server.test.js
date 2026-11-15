@@ -58,6 +58,31 @@ test("reload when only the npm directory or index.html changed", async (t) => {
   await new Promise((r) => setTimeout(r, 50));
   assert.deepEqual(got.map((g) => g.type), ["reload", "reload"]);
 });
+test("WebSocket upgrades from another origin are refused", async (t) => {
+  const { root, driver } = await fixture();
+  const s = createServer({ driver, executionRoot: root, port: 0, log: () => {}, appLabel: "//app:app" });
+  const port = await s.listen();
+  t.after(() => s.close());
+  const { WebSocket } = await import("ws");
+  /** @param {string} origin @returns {Promise<string>} "open" or "refused" */
+  const tryOrigin = (origin) => new Promise((resolve) => {
+    const ws = new WebSocket(`ws://localhost:${port}/@dev/ws`, { origin });
+    ws.on("open", () => { ws.close(); resolve("open"); });
+    ws.on("error", () => resolve("refused"));
+  });
+  assert.equal(await tryOrigin("http://evil.example"), "refused");
+  assert.equal(await tryOrigin(`http://localhost:${port}`), "open");
+  assert.equal(await tryOrigin(`http://127.0.0.1:${port}`), "open");
+});
+test("listens on the loopback interface only", async (t) => {
+  const { root, driver } = await fixture();
+  const s = createServer({ driver, executionRoot: root, port: 0, log: () => {}, appLabel: "//app:app" });
+  const port = await s.listen();
+  t.after(() => s.close());
+  assert.equal((await fetch(`http://127.0.0.1:${port}/`)).status, 200);
+  const other = Object.values(os.networkInterfaces()).flat().find((i) => i && i.family === "IPv4" && !i.internal);
+  if (other) await assert.rejects(fetch(`http://${other.address}:${port}/`));
+});
 test("keeps serving the last good output when a failed build deletes it", async (t) => {
   const { root, driver } = await fixture();
   const s = createServer({ driver, executionRoot: root, port: 0, log: () => {}, appLabel: "//app:app" });
