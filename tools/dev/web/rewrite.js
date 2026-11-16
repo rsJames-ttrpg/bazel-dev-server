@@ -41,7 +41,7 @@ export function isBareSpecifier(spec, manifest) {
 function resolve(spec, key, manifest) {
   const file = manifest.npm.entries[spec];
   if (file !== undefined) return `/npm/${file}`;
-  for (const [name, root] of Object.entries(manifest.packages)) {
+  for (const [name, root] of Object.entries(manifest.packages).sort((a, b) => b[0].length - a[0].length)) {
     if (spec === name || spec.startsWith(name + "/")) {
       const found = findKey(path.posix.normalize(root + spec.slice(name.length)), manifest);
       return found && `/${found}`;

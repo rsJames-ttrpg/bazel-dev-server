@@ -40,3 +40,10 @@ test("findUnresolved lists every import no resolver can serve", () => {
     { key: "a/main.tsx", specifier: "./Missing" }, { key: "a/main.tsx", specifier: "@x/ui/Gone" }, { key: "a/main.tsx", specifier: "lodash" },
   ]);
 });
+
+test("the longest package name wins", () => {
+  const manifest = { entry: "a/main.tsx", packages: { "@x/ui": "ui", "@x/ui/icons": "icons" }, npm: { dir: "n", entries: {} },
+    modules: { "a/main.tsx": { imports: [] }, "ui/index.ts": { imports: [] }, "ui/icons/Arrow.tsx": { imports: [] }, "icons/Arrow.tsx": { imports: [] } } };
+  const { code } = rewriteImports(`import "@x/ui/icons/Arrow"; import "@x/ui";`, "a/main.tsx", manifest);
+  assert.equal(code, `import "/icons/Arrow.tsx"; import "/ui/index.ts";`);
+});

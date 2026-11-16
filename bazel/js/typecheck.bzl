@@ -10,6 +10,9 @@ def _typecheck_tsconfig_impl(ctx):
     up = "../" * depth
 
     srcs = depset(transitive = [d[JsSourceInfo].srcs for d in ctx.attr.deps]).to_list()
+    for f in srcs:
+        if f.short_path.startswith("../"):
+            fail("sources from external repositories are not supported: " + f.short_path)
     packages = {}
     for d in ctx.attr.deps:
         packages.update(d[JsSourceInfo].packages)

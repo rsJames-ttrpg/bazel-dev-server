@@ -31,7 +31,8 @@ export default {
         build.initialOptions.loader = { ...(build.initialOptions.loader ?? {}), ".module.css": "css" };
         /** @param {string} specifier @returns {string | undefined} */
         const packagePath = (specifier) => {
-          for (const [name, dir] of Object.entries(PACKAGES)) {
+          // The longest package name wins, as in TypeScript's paths.
+          for (const [name, dir] of Object.entries(PACKAGES).sort((a, b) => b[0].length - a[0].length)) {
             if (specifier === name || specifier.startsWith(name + "/")) {
               return path.resolve(process.cwd(), dir + specifier.slice(name.length));
             }
