@@ -28,7 +28,7 @@ bazel test //examples/hello:hello.typecheck
 
 Each `.css` source is processed by Lightning CSS into a `.css` output plus a `.css.js` module. Import a plain stylesheet for its side effect, as `examples/shared/ui/Button.tsx` does with `import "./button.css";`.
 
-A `*.module.css` file is a CSS module. Its default export maps each class to a hashed name, so `.title` in `App.module.css` is used as `className={styles.title}` and renders as `_41Zueq_title`. Lightning CSS's default pattern, a hash of the file name followed by the local name, is applied in the transform, which the dev and production configurations share, so the exported names are the same in both. The production stylesheet does not yet match them; see Current limits. A class that uses `composes` exports its own hashed name followed by the composed ones, separated by spaces.
+A `*.module.css` file is a CSS module. Its default export maps each class to a hashed name, so `.title` in `App.module.css` is used as `className={styles.title}` and renders as `_41Zueq_title`. Lightning CSS's default pattern, a hash of the file name followed by the local name, is applied in the transform, which the dev and production configurations share, so the exported names are the same in both. The production stylesheet uses the same names: esbuild treats the processed `.module.css` as plain CSS and never renames classes. A class that uses `composes` exports its own hashed name followed by the composed ones, separated by spaces.
 
 In dev, evaluating the `.css.js` module puts the stylesheet in a `<style data-dev-css="<key>">` element in `<head>`. In the production bundle, esbuild collects every imported stylesheet into `main.css`, and `index.html` gets a `<link rel="stylesheet" href="./main.css">`. An app without CSS has no `main.css` and no link.
 
@@ -107,7 +107,6 @@ The counter stayed at its value through all ten saves.
 ## Current limits
 
 - SWC strips types without checking them, so a type error does not fail the dev build; run `bazel test :<name>.typecheck`.
-- Known defect: in the production bundle, esbuild treats `*.module.css` as local CSS and renames the already hashed classes again (`.App__41Zueq_title` in `main.css`), while `main.js` uses `_41Zueq_title`. CSS module classes therefore do not apply in production yet. Dev is correct.
 - No Svelte.
 - Sources other than `.ts`, `.tsx` and `.css`, such as images and fonts, are not handled.
 - The hardening milestone of the design spec is not done: `BUILD` file changes, renames and watcher overflow get no special handling.

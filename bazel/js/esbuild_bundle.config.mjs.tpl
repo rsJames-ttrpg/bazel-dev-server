@@ -26,6 +26,9 @@ export default {
       name: "bundle-entry-and-packages",
       setup(build) {
         build.initialOptions.entryPoints = [{ in: path.resolve(process.cwd(), ENTRY), out: "main" }];
+        // Lightning CSS already hashed *.module.css class names in the transform;
+        // esbuild must not scope them again (its default loader for these is local-css).
+        build.initialOptions.loader = { ...(build.initialOptions.loader ?? {}), ".module.css": "css" };
         /** @param {string} specifier @returns {string | undefined} */
         const packagePath = (specifier) => {
           for (const [name, dir] of Object.entries(PACKAGES)) {
