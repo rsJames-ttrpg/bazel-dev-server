@@ -1,8 +1,8 @@
 """react_app: the targets for one React application."""
 
-load("@aspect_bazel_lib//lib:output_files.bzl", "output_files")
 load("@aspect_rules_esbuild//esbuild:defs.bzl", "esbuild")
 load("@aspect_rules_js//js:defs.bzl", "js_binary")
+load(":bundle.bzl", "bundle_config", "bundle_dir")
 load(":dev.bzl", "dev_config")
 load(":js_library.bzl", "js_library")
 load(":manifest.bzl", "app_manifest")
@@ -72,47 +72,20 @@ def react_app(name, srcs, entry, index_html, npm_imports, npm_deps, deps = [], p
         ],
     )
 
-    # Production bundle: esbuild over the same transformed modules, then
-    # <name>.bundle/ holds index.html (entry script pointed at main.js),
-    # main.js and its source map, ready to serve as static files.
-    entry_stem = entry[:entry.rindex(".")]
-    output_files(
-        name = name + ".bundle.entry",
-        target = ":" + name + ".modules",
-        paths = ["%s/%s.modules/%s/%s.js" % (
-            native.package_name(),
-            name,
-            native.package_name(),
-            entry_stem,
-        )],
-    )
+    # Production bundle: esbuild over the same transformed modules, with a
+    # generated config that sets the entry and resolves package_name imports.
+    # <name>.bundle/ holds index.html (entry script pointed at main.js), main.js,
+    # its source map and main.css when there is CSS, ready to serve statically.
+    bundle_config(name = name + ".bundle.config", modules = ":" + name + ".modules", entry = entry, out = name + ".bundle.config.mjs")
     esbuild(
         name = name + ".bundle.esbuild",
-        entry_point = ":" + name + ".bundle.entry",
+        entry_points = [":" + name + ".bundle.config"],
+        config = ":" + name + ".bundle.config",
         srcs = [":" + name + ".modules"],
         deps = npm_deps,
         output_dir = True,
         splitting = False,
         format = "esm",
         define = {"process.env.NODE_ENV": '"production"'},
-        # Whatever the entry file is called, the bundle is main.js.
-        config = {"entryNames": "main"},
     )
-    native.genrule(
-        name = name + ".bundle",
-        srcs = [index_html, ":" + name + ".bundle.esbuild"],
-        outs = [
-            name + ".bundle/index.html",
-            name + ".bundle/main.js",
-            name + ".bundle/main.js.map",
-        ],
-        cmd = " && ".join([
-            "out=$(RULEDIR)/%s.bundle" % name,
-            "sed 's#src=\"\\./%s\"#src=\"./main.js\"#' $(location %s) > $$out/index.html" % (
-                entry.replace(".", "\\."),
-                index_html,
-            ),
-            "cp $(location :%s.bundle.esbuild)/main.js $(location :%s.bundle.esbuild)/main.js.map $$out/" % (name, name),
-            "grep -q 'src=\"./main.js\"' $$out/index.html",
-        ]),
-    )
+    bundle_dir(name = name + ".bundle", esbuild = ":" + name + ".bundle.esbuild", index_html = index_html, entry = entry)

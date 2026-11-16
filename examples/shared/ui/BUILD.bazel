@@ -1,0 +1,8 @@
+load("//bazel/js:js_library.bzl", "js_library")
+
+js_library(
+    name = "ui",
+    srcs = ["index.ts", "Button.tsx"],
+    package_name = "@example/ui",
+    visibility = ["//examples:__subpackages__"],
+)

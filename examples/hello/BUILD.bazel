@@ -6,6 +6,7 @@ react_app(
         "src/**/*.ts",
         "src/**/*.tsx",
     ], allow_empty = True),
+    deps = ["//examples/shared/ui"],
     entry = "src/main.tsx",
     index_html = "index.html",
     npm_deps = [

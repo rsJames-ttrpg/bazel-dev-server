@@ -1,3 +1,4 @@
+import { Button } from "@example/ui";
 import { useState } from "react";
 
 export function App() {
@@ -5,7 +6,7 @@ export function App() {
   return (
     <>
       <h1>Hello from Bazel</h1>
-      <button onClick={() => setCount((c) => c + 1)}>count is {count}</button>
+      <Button onClick={() => setCount((c) => c + 1)}>count is {count}</Button>
     </>
   );
 }
