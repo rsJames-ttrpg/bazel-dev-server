@@ -3,7 +3,7 @@
 // injected into <head> ahead of the entry module, so __devRefresh exists before
 // any app module evaluates.
 import * as RefreshRuntime from "/npm/react-refresh__runtime.js";
-import { classMapChanged, registerExportsForReactRefresh, validateRefreshBoundary } from "./refresh.js";
+import { classMapChanged, registerExportsForReactRefresh, shouldReloadAfterUpdate, validateRefreshBoundary } from "./refresh.js";
 
 const OVERLAY_ID = "__dev_error_overlay";
 
@@ -94,8 +94,17 @@ function connect() {
   ws.addEventListener("message", (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "update") {
+      // Read before hideError(): an overlay here may mean the page never loaded.
+      const overlayShowing = !!document.getElementById(OVERLAY_ID);
       hideError();
-      pending = pending.then(() => applyUpdate(msg.modules)).catch((err) => {
+      pending = pending.then(() => {
+        if (shouldReloadAfterUpdate(msg.modules, new Set(modules.keys()), overlayShowing)) {
+          console.warn("[dev] reload: page did not load; reloading after fix");
+          location.reload();
+          return;
+        }
+        return applyUpdate(msg.modules);
+      }).catch((err) => {
         console.error("[dev] update failed, reloading", err);
         location.reload();
       });

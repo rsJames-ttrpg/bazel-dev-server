@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classMapChanged, registerExportsForReactRefresh, validateRefreshBoundary } from "./refresh.js";
+import { classMapChanged, registerExportsForReactRefresh, shouldReloadAfterUpdate, validateRefreshBoundary } from "./refresh.js";
 
 function fakeRuntime() {
   const calls = [];
@@ -46,4 +46,18 @@ test("class map: non-object treated as empty", () => {
   assert.equal(classMapChanged(null, undefined), false);
   assert.equal(classMapChanged("x", { a: "_h_a" }), true);
   assert.equal(classMapChanged({ a: "_h_a" }, 1), true);
+});
+
+test("update while the overlay shows and no JS module is registered: reload", () => {
+  assert.equal(shouldReloadAfterUpdate([{ key: "app/App.tsx", kind: "js" }], new Set(), true), true);
+});
+test("update while the overlay shows with a registered JS module: hot-update", () => {
+  const updates = [{ key: "app/App.tsx", kind: "js" }, { key: "app/x.ts", kind: "js" }];
+  assert.equal(shouldReloadAfterUpdate(updates, new Set(["app/App.tsx"]), true), false);
+});
+test("update without the overlay: never reload", () => {
+  assert.equal(shouldReloadAfterUpdate([{ key: "app/App.tsx", kind: "js" }], new Set(), false), false);
+});
+test("css-only update while the overlay shows: reload", () => {
+  assert.equal(shouldReloadAfterUpdate([{ key: "app/App.module.css", kind: "css" }], new Set(), true), true);
 });

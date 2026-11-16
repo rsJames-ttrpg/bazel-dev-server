@@ -67,9 +67,15 @@ export function createWatcher({
   const toSet = (rs, fs_) => new Set([...rs, ...fs_].map(toAbs));
 
   let watched = toSet(roots, files);
+  // Filter here rather than trust chokidar's unwatch: it ignores only the exact
+  // unwatched path, so files under a removed root directory still emit events.
+  /** @param {string} abs */
+  const isWatched = (abs) => [...watched].some((w) => abs === w || abs.startsWith(w.endsWith("/") ? w : w + "/"));
   const fs = watch([...watched], { ignored: isIgnored, ignoreInitial: true, followSymlinks: false });
   fs.on("all", (/** @type {string} */ _event, /** @type {string} */ path) => {
-    pending.add(resolve(root, path));
+    const abs = resolve(root, path);
+    if (!isWatched(abs)) return;
+    pending.add(abs);
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
