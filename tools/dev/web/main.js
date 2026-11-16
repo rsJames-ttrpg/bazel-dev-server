@@ -1,6 +1,7 @@
 // @ts-check
 import { execFileSync } from "node:child_process";
 import path from "node:path";
+import readline from "node:readline";
 import { parseArgs } from "node:util";
 import { createDriver } from "../driver/driver.js";
 import { createServer } from "./server.js";
@@ -51,6 +52,15 @@ if (nestedManifest !== manifest) {
 const log = console.log;
 const driver = createDriver({ workspaceDir, target, manifestPath: path.join(executionRoot, manifest), log });
 await driver.start();
+// `r` + Enter on an interactive terminal forces a rebuild (e.g. after the watcher missed something).
+if (process.stdin.isTTY) {
+  process.stdin.resume();
+  readline.createInterface({ input: process.stdin }).on("line", (line) => {
+    if (line.trim() !== "r") return;
+    log("rebuild requested");
+    driver.requestBuild();
+  });
+}
 const server = createServer({ driver, executionRoot, port: Number(port), log, appLabel: app });
 const bound = await server.listen();
 log(`dev server at http://localhost:${bound}`);

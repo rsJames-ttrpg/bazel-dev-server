@@ -91,3 +91,16 @@ test("stdout is not piped", async () => {
   await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
   assert.deepEqual(spawned[0].opts.stdio, ["ignore", "ignore", "pipe"]);
 });
+
+test("reports a discarded analysis cache", async () => {
+  let discarded = 0;
+  const { spawn } = fakeSpawn((c) => { c.stderr.emit("data", Buffer.from("WARNING: Build option --compilation_mode has changed, discarding analysis cache.\n")); c.emit("exit", 0); });
+  await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn, onAnalysisDiscarded: () => { discarded++; } }).request();
+  assert.equal(discarded, 1);
+});
+test("error text omits Bazel progress lines but keeps action output", async () => {
+  const text = "Loading: \nAnalyzing: target //a:b (1 packages loaded)\n[3 / 5] Transforming a.ts\nINFO: Analyzed target //a:b (0 packages loaded).\nINFO: From Transforming examples/hello/src/App.tsx:\nerror: Expected ';'\nERROR: /w/BUILD:1:1: JsTransform failed\n";
+  const { spawn } = fakeSpawn((c) => { c.stderr.emit("data", Buffer.from(text)); c.emit("exit", 1); });
+  const r = await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
+  assert.deepEqual(r.error.split("\n"), ["INFO: From Transforming examples/hello/src/App.tsx:", "error: Expected ';'", "ERROR: /w/BUILD:1:1: JsTransform failed"]);
+});

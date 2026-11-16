@@ -5,12 +5,20 @@ import { diffManifests, loadManifest as realLoadManifest } from "./manifest.js";
 import { createWatcher as realCreateWatcher } from "./watcher.js";
 
 /** @typedef {import("./manifest.js").Manifest} Manifest */
+/** @typedef {{ roots: string[], files: string[] }} WatchSet */
+
+/** @param {Manifest} manifest @returns {WatchSet} what to watch; older manifests watch the workspace */
+const watchSetOf = (manifest) => manifest.watch ?? { roots: [""], files: [] };
+
+/** @param {WatchSet} w */
+const watchingLine = (w) => `watching ${w.roots.map((r) => (r === "" ? "." : r)).join(", ")}`;
 
 /**
- * Watches the workspace, rebuilds the manifest target once per change burst and emits
+ * Watches the app's source roots (from the manifest), rebuilds the manifest target once per change burst and emits
  * `building`, `waiting`, `built` and `failed`.
  * At most one build cycle (build plus manifest load) is in flight; changes during a cycle
- * trigger exactly one more cycle afterwards.
+ * trigger exactly one more cycle afterwards. A watcher error, or `requestBuild()`, counts
+ * as a change. After a good build the watcher is re-rooted if the manifest's watch set changed.
  * @param {{ workspaceDir: string, target: string, manifestPath: string, log: (line: string) => void,
  *   createWatcher?: typeof realCreateWatcher, createBuilder?: typeof realCreateBuilder,
  *   loadManifest?: typeof realLoadManifest }} opts
@@ -33,6 +41,9 @@ export function createDriver({
     onWaiting: () => {
       log("waiting for Bazel server (another command holds the lock)");
       emitter.emit("waiting");
+    },
+    onAnalysisDiscarded: () => {
+      log("analysis cache discarded: Bazel options changed (another command?); this build is slower");
     },
   });
 
@@ -71,7 +82,8 @@ export function createDriver({
     try {
       const next = await loadManifest(manifestPath);
       const tLoaded = performance.now();
-      const diff = diffManifests(driver.manifest, next);
+      const prev = driver.manifest;
+      const diff = diffManifests(prev, next);
       driver.manifest = next;
       const timings = {
         watchToBuild: Math.max(0, Math.round(tBuilt - t0 - result.ms)),
@@ -83,6 +95,11 @@ export function createDriver({
       if (diff.removed.length) line += `, ${diff.removed.length} removed`;
       for (const what of diff.other) line += `, ${what} changed`;
       log(line);
+      const nextWatch = watchSetOf(next);
+      if (watcher && JSON.stringify(prev && watchSetOf(prev)) !== JSON.stringify(nextWatch)) {
+        watcher.update(nextWatch);
+        log(watchingLine(nextWatch));
+      }
       emitter.emit("built", { manifest: next, ...diff, timings });
     } catch (err) {
       const ms = Math.round(performance.now() - t0);
@@ -97,11 +114,21 @@ export function createDriver({
     /** @returns {Promise<Manifest>} */
     async start() {
       driver.manifest = await loadManifest(manifestPath);
-      watcher = createWatcher({ root: workspaceDir });
+      const watch = watchSetOf(driver.manifest);
+      watcher = createWatcher({ root: workspaceDir, roots: watch.roots, files: watch.files });
       watcher.on("change", () => {
         void onChange();
       });
+      watcher.on("error", (/** @type {Error} */ err) => {
+        log(`watcher error: ${err.message}; rebuilding`);
+        void onChange();
+      });
+      log(watchingLine(watch));
       return driver.manifest;
+    },
+    /** Run a build cycle as if a file had changed (coalesces like a change). */
+    requestBuild() {
+      void onChange();
     },
     async stop() {
       const w = watcher;
