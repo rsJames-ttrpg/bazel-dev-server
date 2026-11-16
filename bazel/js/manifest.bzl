@@ -43,6 +43,9 @@ def _app_manifest_impl(ctx):
         inputs = inputs,
         outputs = [out],
         mnemonic = "AppManifest",
+        # The writer reads only its declared inputs; skipping the sandbox saves
+        # staging one symlink per module, ~130 ms of a 15k-file app's rebuild.
+        execution_requirements = {"no-sandbox": "1"},
         env = {
             "BAZEL_BINDIR": ctx.bin_dir.path,
             "JS_BINARY__NO_CD_BINDIR": "1",

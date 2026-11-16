@@ -19,6 +19,8 @@ import path from "node:path";
 
 const ENTRY = %ENTRY%;
 const PACKAGES = %PACKAGES%;
+// The longest package name wins, as in TypeScript's paths; sorted once, not per import.
+const SORTED_PACKAGES = Object.entries(PACKAGES).sort((a, b) => b[0].length - a[0].length);
 
 export default {
   plugins: [
@@ -31,8 +33,7 @@ export default {
         build.initialOptions.loader = { ...(build.initialOptions.loader ?? {}), ".module.css": "css" };
         /** @param {string} specifier @returns {string | undefined} */
         const packagePath = (specifier) => {
-          // The longest package name wins, as in TypeScript's paths.
-          for (const [name, dir] of Object.entries(PACKAGES).sort((a, b) => b[0].length - a[0].length)) {
+          for (const [name, dir] of SORTED_PACKAGES) {
             if (specifier === name || specifier.startsWith(name + "/")) {
               return path.resolve(process.cwd(), dir + specifier.slice(name.length));
             }
