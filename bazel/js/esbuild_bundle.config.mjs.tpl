@@ -38,9 +38,14 @@ export default {
         // Imports of a stylesheet resolve to its .css.js module; the module's own
         // import of the .css is left to esbuild, which collects it into main.css.
         build.onResolve({ filter: /\.css$/ }, (args) => {
+          if (args.kind !== "import-statement" && args.kind !== "dynamic-import") return undefined;
           if (args.importer.endsWith(".css.js")) return undefined;
-          const target = packagePath(args.path) ?? path.resolve(args.resolveDir, args.path);
-          return { path: target + ".js" };
+          const target = packagePath(args.path);
+          if (target !== undefined) return { path: target + ".js" };
+          if (args.path.startsWith(".") || path.isAbsolute(args.path)) {
+            return { path: path.resolve(args.resolveDir, args.path) + ".js" };
+          }
+          return undefined; // another bare specifier: esbuild's npm resolution
         });
         build.onResolve({ filter: /^[^./]/ }, (args) => {
           const target = packagePath(args.path);

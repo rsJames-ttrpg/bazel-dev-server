@@ -33,7 +33,7 @@ export function transformCss({ code, filename, key = filename, dev }) {
   const css = result.code.toString();
   /** @type {Record<string, string>} */
   const exports = {};
-  for (const [name, entry] of Object.entries(result.exports ?? {})) exports[name] = entry.name;
+  for (const [name, entry] of Object.entries(result.exports ?? {})) exports[name] = [entry.name, ...entry.composes.map((c) => c.name)].join(" ");
   const map = JSON.stringify(exports);
 
   const moduleCode = dev

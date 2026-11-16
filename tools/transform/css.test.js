@@ -35,3 +35,12 @@ test("dev module changes digest when the css changes", () => {
 test("a css syntax error throws with file and line", () => {
   assert.throws(() => transformCss({ code: ".a {{ color: red }", filename: "a.css", key: "app/a.css", dev: true }), /^Error: a\.css:1:5: /);
 });
+test("module css: composes adds the composed class names, identically in dev and prod", () => {
+  const src = ".base { color: red } .button { composes: base; margin: 0 }";
+  const dev = transformCss({ code: src, filename: "x.module.css", key: "app/x.module.css", dev: true });
+  const prod = transformCss({ code: src, filename: "x.module.css", key: "app/x.module.css", dev: false });
+  const parts = dev.meta.exports.button.split(" ");
+  assert.equal(parts.length, 2);
+  assert.ok(parts.includes(dev.meta.exports.base));
+  assert.deepEqual(dev.meta.exports, prod.meta.exports);
+});
