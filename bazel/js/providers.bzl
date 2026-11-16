@@ -11,7 +11,7 @@ JsSourceInfo = provider(
 ModulesInfo = provider(
     doc = "Per-file transform outputs of transform_modules.",
     fields = {
-        "modules": "list[struct(src: File, out: File, meta: File)]",
+        "modules": "list[struct(src: File, out: File, meta: File, extra: list[File])]; extra holds additional outputs the server may serve, e.g. the processed .css of a .css source",
         "packages": "dict[str, str]: package_name to workspace-relative BUILD directory",
     },
 )

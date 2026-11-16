@@ -1,6 +1,8 @@
 // @ts-check
 import { readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { transformCss } from "./css.js";
+import { handlerFor } from "./handlers.js";
 import { transformSource } from "./transform.js";
 
 /** @param {string[]} argv */
@@ -31,11 +33,21 @@ function handle(rawArgs) {
   for (const k of ["src", "out", "key", "meta", "dev", "tsconfig"]) {
     if (flags[k] === undefined) throw new Error(`missing --${k}`);
   }
+  const src = readFileSync(flags.src, "utf8");
+  const dev = flags.dev === "true";
+  if (handlerFor(flags.src).kind === "css") {
+    if (flags["css-out"] === undefined) throw new Error("missing --css-out");
+    const { css, code, meta } = transformCss({ code: src, filename: flags.src, key: flags.key, dev });
+    writeFileSync(flags["css-out"], css);
+    writeFileSync(flags.out, code);
+    writeFileSync(flags.meta, JSON.stringify(meta));
+    return;
+  }
   const { code, meta } = transformSource({
-    code: readFileSync(flags.src, "utf8"),
+    code: src,
     filename: flags.src,
     key: flags.key,
-    dev: flags.dev === "true",
+    dev,
     compilerOptions: loadCompilerOptions(flags.tsconfig),
   });
   writeFileSync(flags.out, code);

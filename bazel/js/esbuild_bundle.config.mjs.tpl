@@ -11,7 +11,7 @@
 //    rule's placeholder entry with the app's transformed entry module, named
 //    main. This requires output_dir = True.
 //
-// 2. package_name imports. A js_library's package_name ("@example/ui") maps to
+// 2. package_name imports and stylesheets. A js_library's package_name ("@example/ui") maps to
 //    the directory of its transformed outputs; imports of it, or of a subpath,
 //    resolve there, the way the dev server resolves them from the manifest.
 //    Every other bare specifier is left to esbuild's npm resolution.
@@ -26,16 +26,26 @@ export default {
       name: "bundle-entry-and-packages",
       setup(build) {
         build.initialOptions.entryPoints = [{ in: path.resolve(process.cwd(), ENTRY), out: "main" }];
-        build.onResolve({ filter: /^[^./]/ }, (args) => {
+        /** @param {string} specifier @returns {string | undefined} */
+        const packagePath = (specifier) => {
           for (const [name, dir] of Object.entries(PACKAGES)) {
-            if (args.path === name || args.path.startsWith(name + "/")) {
-              return build.resolve(path.resolve(process.cwd(), dir + args.path.slice(name.length)), {
-                kind: args.kind,
-                resolveDir: process.cwd(),
-              });
+            if (specifier === name || specifier.startsWith(name + "/")) {
+              return path.resolve(process.cwd(), dir + specifier.slice(name.length));
             }
           }
           return undefined;
+        };
+        // Imports of a stylesheet resolve to its .css.js module; the module's own
+        // import of the .css is left to esbuild, which collects it into main.css.
+        build.onResolve({ filter: /\.css$/ }, (args) => {
+          if (args.importer.endsWith(".css.js")) return undefined;
+          const target = packagePath(args.path) ?? path.resolve(args.resolveDir, args.path);
+          return { path: target + ".js" };
+        });
+        build.onResolve({ filter: /^[^./]/ }, (args) => {
+          const target = packagePath(args.path);
+          if (target === undefined) return undefined;
+          return build.resolve(target, { kind: args.kind, resolveDir: process.cwd() });
         });
       },
     },

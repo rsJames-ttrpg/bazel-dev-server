@@ -41,3 +41,19 @@ test("persistent worker speaks the JSON protocol", async () => {
   assert.equal(r3.exitCode, 1);
   assert.match(r3.output, /--out/);
 });
+
+test("one-shot worker transforms a css file into css, module and meta", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "worker-css-"));
+  const src = join(dir, "a.css");
+  writeFileSync(src, ".a { color: red }\n");
+  const out = { out: join(dir, "a.css.js"), meta: join(dir, "a.css.js.meta.json"), css: join(dir, "a.out.css") };
+  const child = spawn(process.execPath, [resolve("tools/transform/worker.js"), "--src", src, "--out", out.out, "--meta", out.meta, "--css-out", out.css, "--key", "app/a.css", "--dev", "false", "--tsconfig", resolve("tsconfig.json")], {
+    env: { ...process.env, BAZEL_BINDIR: "." },
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+  const code = await new Promise((res) => child.on("close", res));
+  assert.equal(code, 0);
+  assert.ok(existsSync(out.out));
+  assert.match(readFileSync(out.css, "utf8"), /color:\s*red/);
+  assert.equal(JSON.parse(readFileSync(out.meta, "utf8")).kind, "css");
+});

@@ -5,6 +5,7 @@ react_app(
     srcs = glob([
         "src/**/*.ts",
         "src/**/*.tsx",
+        "src/**/*.css",
     ], allow_empty = True),
     deps = ["//examples/shared/ui"],
     entry = "src/main.tsx",

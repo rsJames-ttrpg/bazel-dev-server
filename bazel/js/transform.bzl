@@ -13,11 +13,20 @@ def _transform_modules_impl(ctx):
 
     modules = []
     for src in srcs.to_list():
-        if src.extension not in ("ts", "tsx"):
+        if src.path.endswith(".d.ts"):
+            continue  # typecheck inputs only
+        if src.extension not in ("ts", "tsx", "css"):
             continue
-        stem = src.short_path[:-(len(src.extension) + 1)]
-        out = ctx.actions.declare_file(ctx.label.name + "/" + stem + ".js")
-        meta = ctx.actions.declare_file(ctx.label.name + "/" + stem + ".js.meta.json")
+        if src.extension == "css":
+            out = ctx.actions.declare_file(ctx.label.name + "/" + src.short_path + ".js")
+            meta = ctx.actions.declare_file(ctx.label.name + "/" + src.short_path + ".js.meta.json")
+            css = ctx.actions.declare_file(ctx.label.name + "/" + src.short_path)
+            extra = [css]
+        else:
+            stem = src.short_path[:-(len(src.extension) + 1)]
+            out = ctx.actions.declare_file(ctx.label.name + "/" + stem + ".js")
+            meta = ctx.actions.declare_file(ctx.label.name + "/" + stem + ".js.meta.json")
+            extra = []
 
         args = ctx.actions.args()
         args.use_param_file("@%s", use_always = True)
@@ -28,12 +37,14 @@ def _transform_modules_impl(ctx):
         args.add("--meta", meta)
         args.add("--dev", "true" if dev else "false")
         args.add("--tsconfig", tsconfig)
+        if extra:
+            args.add("--css-out", extra[0])
 
         ctx.actions.run(
             executable = ctx.executable._worker,
             arguments = [args],
             inputs = [src, tsconfig],
-            outputs = [out, meta],
+            outputs = [out, meta] + extra,
             mnemonic = "JsTransform",
             execution_requirements = {
                 "supports-workers": "1",
@@ -47,10 +58,10 @@ def _transform_modules_impl(ctx):
             },
             progress_message = "Transforming " + src.short_path,
         )
-        modules.append(struct(src = src, out = out, meta = meta))
+        modules.append(struct(src = src, out = out, meta = meta, extra = extra))
 
     return [
-        DefaultInfo(files = depset([f for m in modules for f in (m.out, m.meta)])),
+        DefaultInfo(files = depset([f for m in modules for f in [m.out, m.meta] + m.extra])),
         ModulesInfo(modules = modules, packages = packages),
     ]
 

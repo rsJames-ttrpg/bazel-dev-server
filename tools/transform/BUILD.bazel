@@ -1,6 +1,16 @@
 load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_test")
 
 js_test(
+    name = "css_test",
+    data = [
+        "css.js",
+        "//:node_modules/es-module-lexer",
+        "//:node_modules/lightningcss",
+    ],
+    entry_point = "css.test.js",
+)
+
+js_test(
     name = "transform_test",
     data = [
         "transform.js",
@@ -13,9 +23,12 @@ js_test(
 js_binary(
     name = "worker",
     data = [
+        "css.js",
+        "handlers.js",
         "transform.js",
         "//:node_modules/@swc/core",
         "//:node_modules/es-module-lexer",
+        "//:node_modules/lightningcss",
     ],
     entry_point = "worker.js",
     visibility = ["//visibility:public"],
@@ -24,10 +37,13 @@ js_binary(
 js_test(
     name = "worker_test",
     data = [
+        "css.js",
+        "handlers.js",
         "transform.js",
         "worker.js",
         "//:node_modules/@swc/core",
         "//:node_modules/es-module-lexer",
+        "//:node_modules/lightningcss",
         "//:tsconfig_json",
     ],
     entry_point = "worker.test.js",
