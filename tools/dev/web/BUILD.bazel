@@ -13,8 +13,10 @@ js_library(
     name = "web",
     srcs = [
         "client.js",
+        "hmr.js",
         "html.js",
         "main.js",
+        "refresh.js",
         "rewrite.js",
         "server.js",
     ],
@@ -45,11 +47,25 @@ js_test(
     name = "server_test",
     data = [
         "client.js",
+        "hmr.js",
         "html.js",
+        "refresh.js",
         "rewrite.js",
         "server.js",
         "//:node_modules/es-module-lexer",
         "//:node_modules/ws",
     ],
     entry_point = "server.test.js",
+)
+
+js_test(
+    name = "hmr_test",
+    data = ["hmr.js"],
+    entry_point = "hmr.test.js",
+)
+
+js_test(
+    name = "refresh_test",
+    data = ["refresh.js"],
+    entry_point = "refresh.test.js",
 )

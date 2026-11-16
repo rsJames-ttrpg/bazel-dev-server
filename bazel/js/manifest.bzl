@@ -19,6 +19,7 @@ def _app_manifest_impl(ctx):
         args.add("--module", "%s=%s=%s" % (m.src.short_path, m.out.path, m.meta.path))
         inputs.append(m.out)
         inputs.append(m.meta)
+        inputs.extend(m.extra)
     if ctx.files.npm_dir:
         args.add("--npm-dir", ctx.files.npm_dir[0].path)
         inputs.extend(ctx.files.npm_dir)

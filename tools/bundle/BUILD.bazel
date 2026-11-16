@@ -1,0 +1,14 @@
+load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_test")
+
+js_test(
+    name = "write_bundle_test",
+    data = ["write_bundle.js"],
+    entry_point = "write_bundle.test.js",
+)
+
+js_binary(
+    name = "write_bundle",
+    data = ["write_bundle.js"],
+    entry_point = "write_bundle.js",
+    visibility = ["//visibility:public"],
+)

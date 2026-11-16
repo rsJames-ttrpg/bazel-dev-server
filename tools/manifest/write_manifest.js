@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * @typedef {{ digest: string, refresh: boolean, imports: string[] }} ModuleMeta
+ * @typedef {{ digest: string, kind?: string, refresh: boolean, imports: string[] }} ModuleMeta
  * @typedef {{ key: string, output: string, meta: ModuleMeta }} ModuleInput
  */
 
@@ -15,19 +15,19 @@ function sortedRecord(o) {
 }
 
 /**
- * Pure: assemble the version 1 manifest. Keys are sorted so output is stable.
+ * Pure: assemble the version 2 manifest. Keys are sorted so output is stable.
  * @param {{ pkg: string, entry: string, indexHtml: string, indexDigest: string, modules: ModuleInput[],
  *   npm: { dir: string, digest: string, entries: Record<string, string> }, packages: Record<string, string> }} input
  */
 export function buildManifest({ pkg, entry, indexHtml, indexDigest, modules, npm, packages }) {
   const sorted = [...modules].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  /** @type {Record<string, { output: string, digest: string, refresh: boolean, imports: string[] }>} */
+  /** @type {Record<string, { output: string, digest: string, kind: string, refresh: boolean, imports: string[] }>} */
   const out = {};
   for (const { key, output, meta } of sorted) {
-    out[key] = { output, digest: meta.digest, refresh: meta.refresh, imports: meta.imports };
+    out[key] = { output, digest: meta.digest, kind: meta.kind ?? "js", refresh: meta.refresh, imports: meta.imports };
   }
   return {
-    version: 1,
+    version: 2,
     package: pkg,
     entry,
     indexHtml,

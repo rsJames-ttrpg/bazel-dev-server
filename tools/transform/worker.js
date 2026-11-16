@@ -1,6 +1,8 @@
 // @ts-check
 import { readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { transformCss } from "./css.js";
+import { handlerFor } from "./handlers.js";
 import { transformSource } from "./transform.js";
 
 /** @param {string[]} argv */
@@ -28,13 +30,27 @@ function handle(rawArgs) {
   const flags = {};
   const args = expandArgs(rawArgs);
   for (let i = 0; i < args.length; i += 2) flags[args[i].replace(/^--/, "")] = args[i + 1];
-  for (const k of ["src", "out", "meta", "dev", "tsconfig"]) {
+  for (const k of ["src", "out", "key", "meta", "dev", "tsconfig"]) {
     if (flags[k] === undefined) throw new Error(`missing --${k}`);
   }
+  const src = readFileSync(flags.src, "utf8");
+  const dev = flags.dev === "true";
+  if (handlerFor(flags.src).kind === "css") {
+    // Lightning CSS hashes module class names from the filename, so pass the
+    // configuration-independent key: an exec path of a generated source holds
+    // bazel-out/<config>/bin and would give dev and production different names.
+    if (flags["css-out"] === undefined) throw new Error("missing --css-out");
+    const { css, code, meta } = transformCss({ code: src, filename: flags.key, key: flags.key, dev });
+    writeFileSync(flags["css-out"], css);
+    writeFileSync(flags.out, code);
+    writeFileSync(flags.meta, JSON.stringify(meta));
+    return;
+  }
   const { code, meta } = transformSource({
-    code: readFileSync(flags.src, "utf8"),
+    code: src,
     filename: flags.src,
-    dev: flags.dev === "true",
+    key: flags.key,
+    dev,
     compilerOptions: loadCompilerOptions(flags.tsconfig),
   });
   writeFileSync(flags.out, code);

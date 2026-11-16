@@ -4,14 +4,18 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
+import { decide } from "./hmr.js";
 import { renderIndex } from "./html.js";
 import { isBareSpecifier, rewriteImports } from "./rewrite.js";
 
-const CLIENT_PATH = fileURLToPath(new URL("./client.js", import.meta.url));
+// The tool's own browser files, served from its runfiles at /@dev/<file>.
+const DEV_FILES = new Set(["client.js", "refresh.js"]);
+/** @param {string} file */
+const devFilePath = (file) => fileURLToPath(new URL(`./${file}`, import.meta.url));
 
 /**
  * @typedef {import("./rewrite.js").Manifest & { indexHtml: string,
- *   modules: Record<string, { output: string, digest: string }> }} Manifest
+ *   modules: Record<string, { output: string, digest: string, refresh: boolean, kind: "js" | "css" }> }} Manifest
  * @typedef {{ manifest: Manifest | null, on(event: string, cb: (...args: any[]) => void): unknown }} Driver
  */
 
@@ -72,8 +76,10 @@ export function createServer({ driver, executionRoot, port, log, appLabel }) {
       const html = renderIndex((await fromRoot(manifest.indexHtml)).toString("utf8"), manifest);
       return { status: 200, headers: { "content-type": "text/html; charset=utf-8" }, body: html };
     }
-    if (pathname === "/@dev/client.js") {
-      return { status: 200, headers: { "content-type": contentType(CLIENT_PATH) }, body: await readFile(CLIENT_PATH) };
+    if (pathname.startsWith("/@dev/")) {
+      const file = pathname.slice("/@dev/".length);
+      if (!DEV_FILES.has(file)) return { status: 404, body: "not found" };
+      return { status: 200, headers: { "content-type": contentType(file) }, body: await readFile(devFilePath(file)) };
     }
     if (pathname.startsWith("/npm/")) {
       const file = pathname.slice("/npm/".length);
@@ -142,15 +148,25 @@ export function createServer({ driver, executionRoot, port, log, appLabel }) {
     for (const client of wss.clients) client.send(data);
   }
 
-  // Events are handled in order: a reload goes out only once the new outputs are held.
+  // Events are handled in order: an update or reload goes out only once the new
+  // outputs are held.
   let events = Promise.resolve();
-  // After a failure the next good build reloads even with no changes, which clears
-  // the overlay when an edit is reverted to the last good content.
+  // After a failure the next good build sends at least "ok", which clears the
+  // overlay when an edit is reverted to the last good content.
   let failed = false;
-  driver.on("built", (/** @type {{ changed: string[], added: string[], removed: string[], other?: string[] }} */ e) => {
-    if (!(e.changed.length || e.added.length || e.removed.length || e.other?.length || failed)) return;
+  driver.on("built", (/** @type {import("./hmr.js").BuiltEvent} */ e) => {
+    const arrived = performance.now();
+    const msg = decide(e, failed);
+    if (!msg) return;
     failed = false;
-    events = events.then(holdOutputs).then(() => broadcast({ type: "reload" }));
+    events = events.then(holdOutputs).then(() => {
+      broadcast(msg);
+      if (msg.type === "update") log(`update: ${msg.modules.length} modules`);
+      else if (msg.type === "reload") log(`reload: ${msg.reason}`);
+      else if (msg.type === "ok") log("ok: overlay cleared");
+      const ms = performance.now() - arrived;
+      if (ms > 10) log(`pushed in ${Math.round(ms)}ms`);
+    });
   });
   driver.on("failed", (/** @type {{ error: string }} */ e) => {
     failed = true;

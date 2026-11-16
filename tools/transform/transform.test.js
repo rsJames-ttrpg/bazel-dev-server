@@ -41,3 +41,22 @@ test("digest hashes the output: dev and prod outputs differ", () => {
   const b = transformSource({ code, filename: "A.tsx", dev: false, compilerOptions: opts });
   assert.notEqual(a.meta.digest, b.meta.digest);
 });
+
+test("dev component module is wrapped for refresh with its key", () => {
+  const r = transformSource({ code: "export const A = () => <div/>;", filename: "A.tsx", key: "app/src/A.tsx", dev: true, compilerOptions: opts });
+  assert.equal(r.meta.kind, "js");
+  assert.equal(r.meta.refresh, true);
+  assert.match(r.code, /window\.__devRefresh\.register\(type, "app\/src\/A\.tsx " \+ id\)/);
+  assert.match(r.code, /registerModule\("app\/src\/A\.tsx", import\.meta\.url\)/);
+  assert.ok(r.code.indexOf("__prevRefreshReg") < r.code.indexOf("$RefreshReg$(_c"), "wrapper head precedes SWC body");
+  assert.ok(r.code.lastIndexOf("window.$RefreshReg$ = __prevRefreshReg") > r.code.indexOf("$RefreshReg$(_c"), "wrapper tail follows SWC body");
+});
+test("dev module without components is not wrapped", () => {
+  const r = transformSource({ code: "export const n = 1;", filename: "n.ts", key: "app/n.ts", dev: true, compilerOptions: opts });
+  assert.equal(r.meta.refresh, false);
+  assert.doesNotMatch(r.code, /__devRefresh/);
+});
+test("prod component module is never wrapped", () => {
+  const r = transformSource({ code: "export const A = () => <div/>;", filename: "A.tsx", key: "app/src/A.tsx", dev: false, compilerOptions: opts });
+  assert.doesNotMatch(r.code, /RefreshReg/);
+});
