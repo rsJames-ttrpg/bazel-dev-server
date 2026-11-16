@@ -23,6 +23,7 @@ def _transform_modules_impl(ctx):
         args.use_param_file("@%s", use_always = True)
         args.set_param_file_format("multiline")
         args.add("--src", src)
+        args.add("--key", src.short_path)
         args.add("--out", out)
         args.add("--meta", meta)
         args.add("--dev", "true" if dev else "false")

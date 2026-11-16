@@ -28,12 +28,13 @@ function handle(rawArgs) {
   const flags = {};
   const args = expandArgs(rawArgs);
   for (let i = 0; i < args.length; i += 2) flags[args[i].replace(/^--/, "")] = args[i + 1];
-  for (const k of ["src", "out", "meta", "dev", "tsconfig"]) {
+  for (const k of ["src", "out", "key", "meta", "dev", "tsconfig"]) {
     if (flags[k] === undefined) throw new Error(`missing --${k}`);
   }
   const { code, meta } = transformSource({
     code: readFileSync(flags.src, "utf8"),
     filename: flags.src,
+    key: flags.key,
     dev: flags.dev === "true",
     compilerOptions: loadCompilerOptions(flags.tsconfig),
   });

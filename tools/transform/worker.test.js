@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -11,11 +11,11 @@ test("persistent worker speaks the JSON protocol", async () => {
   const src = join(dir, "a.ts");
   writeFileSync(src, "export const n: number = 1;\n");
   const argsfile = join(dir, "args");
-  writeFileSync(argsfile, ["--src", src, "--out", join(dir, "1.js"), "--meta", join(dir, "1.meta.json"), "--dev", "false", "--tsconfig", tsconfig].join("\n") + "\n");
+  writeFileSync(argsfile, ["--src", src, "--out", join(dir, "1.js"), "--meta", join(dir, "1.meta.json"), "--key", "app/a.ts", "--dev", "false", "--tsconfig", tsconfig].join("\n") + "\n");
   const requests = [
     { arguments: [`@${argsfile}`], requestId: 1 },
-    { arguments: ["--src", src, "--out", join(dir, "2.js"), "--meta", join(dir, "2.meta.json"), "--dev", "false", "--tsconfig", tsconfig], requestId: 2 },
-    { arguments: ["--src", src, "--meta", join(dir, "3.meta.json"), "--dev", "false", "--tsconfig", tsconfig], requestId: 3 },
+    { arguments: ["--src", src, "--out", join(dir, "2.js"), "--meta", join(dir, "2.meta.json"), "--key", "app/a.ts", "--dev", "false", "--tsconfig", tsconfig], requestId: 2 },
+    { arguments: ["--src", src, "--meta", join(dir, "3.meta.json"), "--key", "app/a.ts", "--dev", "false", "--tsconfig", tsconfig], requestId: 3 },
   ];
   const child = spawn(process.execPath, [resolve("tools/transform/worker.js"), "--persistent_worker"], {
     env: { ...process.env, BAZEL_BINDIR: "." },
@@ -37,6 +37,7 @@ test("persistent worker speaks the JSON protocol", async () => {
     assert.ok(existsSync(join(dir, `${n}.js`)));
     assert.ok(existsSync(join(dir, `${n}.meta.json`)));
   }
+  for (const n of [1, 2]) assert.equal(JSON.parse(readFileSync(join(dir, `${n}.meta.json`), "utf8")).kind, "js");
   assert.equal(r3.exitCode, 1);
   assert.match(r3.output, /--out/);
 });
