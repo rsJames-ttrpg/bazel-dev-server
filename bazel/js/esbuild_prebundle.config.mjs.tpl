@@ -15,6 +15,11 @@
 //    small virtual module that re-exports the package's export names, which
 //    are read here by requiring the package under the same NODE_ENV the
 //    bundle defines.
+//
+// 3. Stylesheets. A specifier ending in .css is loaded as text (the "text"
+//    loader applies only here, and the prebundle never sees workspace CSS) and
+//    its entry puts that text in a <style data-dev-css="<spec>"> element in
+//    <head>, the way a workspace .css.js module does in dev.
 import { createRequire } from "node:module";
 import { join } from "node:path";
 
@@ -25,6 +30,16 @@ const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
 
 function entrySource(specifier) {
   const spec = JSON.stringify(specifier);
+  if (specifier.endsWith(".css")) {
+    return [
+      `import css from ${spec};`,
+      `const el = document.createElement("style");`,
+      `el.dataset.devCss = ${spec};`,
+      `el.textContent = css;`,
+      `document.head.append(el);`,
+      `export default css;`,
+    ].join("\n");
+  }
   const previous = process.env.NODE_ENV;
   process.env.NODE_ENV = nodeEnv;
   let mod;
@@ -55,6 +70,10 @@ export default {
     {
       name: "npm-prebundle-entries",
       setup(build) {
+        build.initialOptions.loader = {
+          ...build.initialOptions.loader,
+          ".css": "text",
+        };
         build.initialOptions.entryPoints = entries.map(({ in: spec, out }) => ({
           in: `${NAMESPACE}:${spec}`,
           out,

@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "normalize.css": "8.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

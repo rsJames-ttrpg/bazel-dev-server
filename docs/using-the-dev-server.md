@@ -32,6 +32,8 @@ A `*.module.css` file is a CSS module. Its default export maps each class to a h
 
 In dev, evaluating the `.css.js` module puts the stylesheet in a `<style data-dev-css="<key>">` element in `<head>`. In the production bundle, esbuild collects every imported stylesheet into `main.css`, and `index.html` gets a `<link rel="stylesheet" href="./main.css">`. An app without CSS has no `main.css` and no link.
 
+A stylesheet from an npm package is listed by its specifier in `npm_imports`, with its package in `npm_deps`, and imported for its side effect: `examples/hello` lists `"normalize.css"` and `"//:node_modules/normalize.css"` and starts `main.tsx` with `import "normalize.css";`. In dev the prebundle turns it into `/npm/normalize.css.js`, which puts the stylesheet text in a `<style data-dev-css="normalize.css">` element in `<head>`. In the production bundle, esbuild resolves it from `node_modules` and collects it into `main.css` with the workspace stylesheets.
+
 ## Running it
 
 ```
@@ -110,7 +112,6 @@ The counter stayed at its value through all ten saves.
 - SWC strips types without checking them, so a type error does not fail the dev build; run `bazel test :<name>.typecheck`.
 - No Svelte.
 - Sources other than `.ts`, `.tsx` and `.css`, such as images and fonts, are not handled.
-- Stylesheets imported from npm packages, such as `import "some-lib/dist/style.css"`, are not supported: esbuild bundles them into `main.css` in production, but dev cannot serve them, so a `.css` entry in `npm_imports` fails the build.
 - The hardening milestone of the design spec is not done: `BUILD` file changes, renames and watcher overflow get no special handling.
 - Linux and macOS only.
 
