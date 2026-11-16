@@ -12,7 +12,7 @@ function globToRegExp(glob) {
     const c = glob[i];
     if (c === "*" && glob[i + 1] === "*") {
       if (glob[i + 2] === "/") { re += "(?:.*/)?"; i += 2; }
-      else if (re.endsWith("/")) { re = re.slice(0, -1) + "(?:/.*)?"; i += 1; }
+      else if (re.endsWith("/")) { re += ".*"; i += 1; }
       else { re += ".*"; i += 1; }
     } else if (c === "*") re += "[^/]*";
     else if (c === "?") re += "[^/]";
@@ -21,20 +21,33 @@ function globToRegExp(glob) {
   return new RegExp(`^${re}$`);
 }
 
+export const DEFAULT_IGNORED = [
+  "bazel-*", "bazel-*/**", "**/node_modules", "**/node_modules/**", "**/.git", "**/.git/**",
+];
+
 /**
- * Watch `root` and deliver every file event within one debounce window as a single
- * `change` call carrying the distinct absolute paths.
- * @param {{ root: string, debounceMs?: number, ignored?: string[], watch?: Function }} opts
- * @returns {{ on(event: "change", cb: (paths: string[]) => void): void, close(): Promise<void> }}
+ * Watch the given workspace-relative `roots` and `files` (`""` is `root` itself) and deliver
+ * every file event within one debounce window as a single `change` call carrying the distinct
+ * absolute paths. Watcher errors go to `error` listeners; they are never thrown.
+ * @param {{ root: string, roots?: string[], files?: string[], debounceMs?: number, ignored?: string[], watch?: Function }} opts
+ * @returns {{
+ *   on(event: "change" | "error", cb: Function): void,
+ *   update(next: { roots?: string[], files?: string[] }): void,
+ *   close(): Promise<void>,
+ * }}
  */
 export function createWatcher({
   root,
+  roots = [""],
+  files = [],
   debounceMs = 20,
-  ignored = ["**/bazel-*/**", "**/node_modules/**", "**/.git/**"],
+  ignored = DEFAULT_IGNORED,
   watch = chokidar.watch,
 }) {
   /** @type {Array<(paths: string[]) => void>} */
   const listeners = [];
+  /** @type {Array<(err: Error) => void>} */
+  const errorListeners = [];
   /** @type {Set<string>} */
   let pending = new Set();
   /** @type {NodeJS.Timeout | null} */
@@ -48,7 +61,13 @@ export function createWatcher({
     return rel !== "" && patterns.some((re) => re.test(rel));
   };
 
-  const fs = watch(root, { ignored: isIgnored, ignoreInitial: true, followSymlinks: false });
+  /** @param {string} p */
+  const toAbs = (p) => (p === "" ? root : resolve(root, p));
+  /** @param {string[]} rs @param {string[]} fs_ */
+  const toSet = (rs, fs_) => new Set([...rs, ...fs_].map(toAbs));
+
+  let watched = toSet(roots, files);
+  const fs = watch([...watched], { ignored: isIgnored, ignoreInitial: true, followSymlinks: false });
   fs.on("all", (/** @type {string} */ _event, /** @type {string} */ path) => {
     pending.add(resolve(root, path));
     if (timer) clearTimeout(timer);
@@ -59,10 +78,22 @@ export function createWatcher({
       for (const cb of listeners) cb(paths);
     }, debounceMs);
   });
+  fs.on("error", (/** @type {unknown} */ err) => {
+    const error = err instanceof Error ? err : new Error(String(err));
+    for (const cb of errorListeners) cb(error);
+  });
 
   return {
-    on(_event, cb) {
-      listeners.push(cb);
+    on(event, cb) {
+      (event === "error" ? errorListeners : listeners).push(cb);
+    },
+    update({ roots: nextRoots = [""], files: nextFiles = [] }) {
+      const next = toSet(nextRoots, nextFiles);
+      const added = [...next].filter((p) => !watched.has(p));
+      const removed = [...watched].filter((p) => !next.has(p));
+      watched = next;
+      if (added.length) fs.add(added);
+      if (removed.length) fs.unwatch(removed);
     },
     async close() {
       if (timer) clearTimeout(timer);
