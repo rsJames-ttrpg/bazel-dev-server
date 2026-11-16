@@ -2,15 +2,17 @@
 
 load("@aspect_rules_esbuild//esbuild:defs.bzl", "esbuild")
 load("@aspect_rules_js//js:defs.bzl", "js_binary")
+load("@npm//:typescript/package_json.bzl", tsc = "bin")
 load(":bundle.bzl", "bundle_config", "bundle_dir")
 load(":dev.bzl", "dev_config")
 load(":js_library.bzl", "js_library")
 load(":manifest.bzl", "app_manifest")
 load(":npm.bzl", "npm_prebundle")
 load(":transform.bzl", "transform_modules")
+load(":typecheck.bzl", "typecheck_tsconfig")
 
-def react_app(name, srcs, entry, index_html, npm_imports, npm_deps, deps = [], port = 5173):
-    """Declares <name>.src, .modules, .npm, .npm.dev, .manifest, .manifest.dev, .dev and .bundle.
+def react_app(name, srcs, entry, index_html, npm_imports, npm_deps, deps = [], port = 5173, typecheck_deps = []):
+    """Declares <name>.src, .modules, .npm, .npm.dev, .manifest, .manifest.dev, .dev, .bundle and .typecheck.
 
     Rule logic lives in the loaded .bzl files; this macro only wires targets.
 
@@ -23,6 +25,7 @@ def react_app(name, srcs, entry, index_html, npm_imports, npm_deps, deps = [], p
         npm_deps: linked npm package targets providing npm_imports.
         deps: js_library targets the app depends on.
         port: dev server port of <name>.dev.
+        typecheck_deps: linked @types packages (and other npm targets) tsc needs, for example //:node_modules/@types/react.
     """
 
     js_library(name = name + ".src", srcs = srcs, deps = deps)
@@ -99,3 +102,23 @@ def react_app(name, srcs, entry, index_html, npm_imports, npm_deps, deps = [], p
         define = {"process.env.NODE_ENV": '"production"'},
     )
     bundle_dir(name = name + ".bundle", esbuild = ":" + name + ".bundle.esbuild", index_html = index_html, entry = entry)
+
+    # Type gate: SWC strips types without checking them, so tsc is the only
+    # check. The generated tsconfig extends the root one and maps package_name
+    # imports to their directories. Paths in it are relative to its own bin
+    # directory; tsc_test runs from the runfiles bin tree, so -p takes the
+    # runfiles-root relative $(rootpath).
+    typecheck_tsconfig(
+        name = name + ".typecheck.tsconfig",
+        deps = [":" + name + ".src"],
+        out = name + ".typecheck.tsconfig.json",
+    )
+    tsc.tsc_test(
+        name = name + ".typecheck",
+        args = ["-p", "$(rootpath :%s.typecheck.tsconfig)" % name],
+        data = [
+            ":" + name + ".typecheck.tsconfig",
+            Label("//:tsconfig_json"),
+            Label("//bazel/js:css_types"),
+        ] + typecheck_deps,
+    )

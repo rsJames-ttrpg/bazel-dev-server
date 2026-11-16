@@ -14,10 +14,11 @@ Load `react_app` from `//bazel/js:react_app.bzl` in your package's `BUILD.bazel`
 | `npm_deps` | Linked npm package targets that provide `npm_imports`, for example `//:node_modules/react`. |
 | `deps` | `js_library` targets the app depends on. Default is none. |
 | `port` | Dev server port of `<name>.dev`. Default is 5173. |
+| `typecheck_deps` | Linked npm targets `<name>.typecheck` needs, for example `//:node_modules/@types/react`. Default is none. |
 
 If `react/jsx-runtime` is in `npm_imports`, the macro adds `react/jsx-dev-runtime` for you.
 
-The macro declares `<name>.src`, `.modules`, `.npm`, `.npm.dev`, `.manifest`, `.manifest.dev`, `.bundle` and `.dev`. The root `tsconfig.json` is the single source of truth for `jsx`, `target`, `useDefineForClassFields` and `verbatimModuleSyntax`. Because `verbatimModuleSyntax` is on, type-only imports must be written `import type`.
+The macro declares `<name>.src`, `.modules`, `.npm`, `.npm.dev`, `.manifest`, `.manifest.dev`, `.bundle`, `.dev` and `.typecheck`. `bazel test :<name>.typecheck` runs `tsc` over the app and its `deps`; SWC strips types without checking them, so this is the only type gate. The root `tsconfig.json` is the single source of truth for `jsx`, `target`, `useDefineForClassFields` and `verbatimModuleSyntax`. Because `verbatimModuleSyntax` is on, type-only imports must be written `import type`.
 
 ## Running it
 
