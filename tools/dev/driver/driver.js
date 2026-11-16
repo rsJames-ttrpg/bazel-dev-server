@@ -19,7 +19,7 @@ const watchingLine = (w) => `watching ${w.roots.map((r) => (r === "" ? "." : r))
  * At most one build cycle (build plus manifest load) is in flight; changes during a cycle
  * trigger exactly one more cycle afterwards. A watcher error, or `requestBuild()`, counts
  * as a change. After a good build the watcher is re-rooted if the manifest's watch set changed.
- * @param {{ workspaceDir: string, target: string, manifestPath: string, log: (line: string) => void,
+ * @param {{ workspaceDir: string, target: string, manifestPath: string, bazelArgs?: string[], log: (line: string) => void,
  *   createWatcher?: typeof realCreateWatcher, createBuilder?: typeof realCreateBuilder,
  *   loadManifest?: typeof realLoadManifest }} opts
  */
@@ -27,6 +27,7 @@ export function createDriver({
   workspaceDir,
   target,
   manifestPath,
+  bazelArgs = [],
   log,
   createWatcher = realCreateWatcher,
   createBuilder = realCreateBuilder,
@@ -38,6 +39,7 @@ export function createDriver({
   const builder = createBuilder({
     workspaceDir,
     target,
+    bazelArgs,
     onWaiting: () => {
       log("waiting for Bazel server (another command holds the lock)");
       emitter.emit("waiting");
@@ -97,8 +99,12 @@ export function createDriver({
       log(line);
       const nextWatch = watchSetOf(next);
       if (watcher && JSON.stringify(prev && watchSetOf(prev)) !== JSON.stringify(nextWatch)) {
-        watcher.update(nextWatch);
-        log(watchingLine(nextWatch));
+        try {
+          watcher.update(nextWatch);
+          log(watchingLine(nextWatch));
+        } catch (err) {
+          log(`watcher error: ${err instanceof Error ? err.message : err}; roots unchanged`);
+        }
       }
       emitter.emit("built", { manifest: next, ...diff, timings });
     } catch (err) {

@@ -27,9 +27,9 @@ function nestedEnv(env) {
 }
 
 /**
- * Runs `bazel build <target>`, one at a time. Requests made during a build share a
+ * Runs `bazel build <bazelArgs> <target>`, one at a time. Requests made during a build share a
  * single pending build that starts when the current one ends.
- * @param {{ workspaceDir: string, target: string, bazel?: string, spawn?: Function,
+ * @param {{ workspaceDir: string, target: string, bazel?: string, bazelArgs?: string[], spawn?: Function,
  *   waitingAfterMs?: number, onWaiting?: () => void, onAnalysisDiscarded?: () => void }} opts
  * @returns {{ request(): Promise<BuildResult> }}
  */
@@ -37,6 +37,7 @@ export function createBuilder({
   workspaceDir,
   target,
   bazel = "bazel",
+  bazelArgs = [],
   spawn = nodeSpawn,
   waitingAfterMs = 2000,
   onWaiting = () => {},
@@ -53,7 +54,7 @@ export function createBuilder({
     return new Promise((resolve) => {
       let child;
       try {
-        child = spawn(bazel, ["build", target], {
+        child = spawn(bazel, ["build", ...bazelArgs, target], {
           cwd: workspaceDir,
           env: nestedEnv(process.env),
           stdio: ["ignore", "ignore", "pipe"],
@@ -79,8 +80,10 @@ export function createBuilder({
 
       /** @param {string} line */
       const pushLine = (line) => {
-        lines.push(line);
-        if (lines.length > TAIL_LINES) lines = lines.slice(-TAIL_LINES);
+        if (!isProgressLine(line)) {
+          lines.push(line);
+          if (lines.length > TAIL_LINES) lines = lines.slice(-TAIL_LINES);
+        }
         if (line.includes("Analyzing") || line.includes("Loading")) progressed = true;
         if (!discarded && line.includes("discarding analysis cache")) {
           discarded = true;
@@ -105,7 +108,7 @@ export function createBuilder({
           if (partial) pushLine(partial);
           partial = "";
           const ms = Math.round(performance.now() - started);
-          const error = lines.filter((l) => !isProgressLine(l)).join("\n");
+          const error = lines.join("\n");
           resolve(code === 0 ? { ok: true, ms } : { ok: false, error, ms });
         };
         const stderr = child.stderr;

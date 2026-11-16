@@ -196,3 +196,31 @@ test("a discarded analysis cache is logged", async () => {
   await driver.stop();
   assert.equal(logs[1], "analysis cache discarded: Bazel options changed (another command?); this build is slower");
 });
+
+test("a throwing watcher.update is logged and does not fail the build", async () => {
+  const m2 = mk({ a: "2" }); m2.watch = { roots: ["app", "lib"], files: [] };
+  const m1 = mk({ a: "1" }); m1.watch = { roots: ["app"], files: [] };
+  let fireChange;
+  const watcher = {
+    on: (e, cb) => { if (e === "change") fireChange = cb; },
+    update: () => { throw new Error("EMFILE"); },
+    close: async () => {},
+  };
+  const logs = [];
+  const manifests = [m1, m2];
+  let loads = 0;
+  const driver = createDriver({
+    workspaceDir: "/w", target: "//a:b", manifestPath: "/m.json", log: (l) => logs.push(l),
+    createWatcher: () => watcher, createBuilder: () => ({ request: async () => ({ ok: true, ms: 1 }) }),
+    loadManifest: async () => manifests[loads++],
+  });
+  const events = [];
+  for (const e of ["built", "failed"]) driver.on(e, () => events.push(e));
+  await driver.start();
+  fireChange(["/w/f.ts"]);
+  await sleep(30);
+  await driver.stop();
+  assert.deepEqual(events, ["built"]);
+  assert.ok(logs.includes("watcher error: EMFILE; roots unchanged"));
+  assert.ok(!logs.some((l) => l.startsWith("build failed")));
+});

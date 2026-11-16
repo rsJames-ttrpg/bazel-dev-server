@@ -104,3 +104,17 @@ test("error text omits Bazel progress lines but keeps action output", async () =
   const r = await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
   assert.deepEqual(r.error.split("\n"), ["INFO: From Transforming examples/hello/src/App.tsx:", "error: Expected ';'", "ERROR: /w/BUILD:1:1: JsTransform failed"]);
 });
+test("forwards bazel args before the target", async () => {
+  const { spawn, spawned } = fakeSpawn((c) => c.emit("exit", 0));
+  await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn, bazelArgs: ["--config=x", "--define=a=b"] }).request();
+  assert.deepEqual(spawned[0].args, ["build", "--config=x", "--define=a=b", "//a:b"]);
+});
+test("progress lines do not crowd useful lines out of the 60-line tail", async () => {
+  const { spawn } = fakeSpawn((c) => {
+    let text = "ERROR: real failure\n";
+    for (let i = 0; i < 200; i++) text += `[${i} / 300] 1 action running\n`;
+    c.stderr.emit("data", Buffer.from(text)); c.emit("exit", 1);
+  });
+  const r = await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
+  assert.match(r.error, /real failure/);
+});
