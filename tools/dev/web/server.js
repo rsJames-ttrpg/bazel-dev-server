@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { decide } from "./hmr.js";
 import { renderIndex } from "./html.js";
-import { isBareSpecifier, rewriteImports } from "./rewrite.js";
+import { findUnresolved, isBareSpecifier, rewriteImports } from "./rewrite.js";
 
 // The tool's own browser files, served from its runfiles at /@dev/<file>.
 const DEV_FILES = new Set(["client.js", "refresh.js"]);
@@ -35,6 +35,21 @@ function contentType(file) {
 export function createServer({ driver, executionRoot, port, log, appLabel }) {
   /** @type {Set<string>} */
   const reported = new Set();
+
+  /** @param {string} spec @param {Manifest} manifest */
+  const hintFor = (spec, manifest) =>
+    isBareSpecifier(spec, manifest) ? `; add it to npm_imports of ${appLabel}` : `; not in srcs of ${appLabel} or its deps`;
+
+  /**
+   * Log every unresolved import of the manifest and return the overlay text.
+   * @param {Manifest} manifest @returns {string | null}
+   */
+  function checkImports(manifest) {
+    const list = findUnresolved(manifest);
+    for (const { key, specifier } of list) log(`cannot resolve "${specifier}" from ${key}${hintFor(specifier, manifest)}`);
+    if (!list.length) return null;
+    return "unresolved imports:\n" + list.map(({ key, specifier }) => `  ${key}: "${specifier}"${hintFor(specifier, manifest)}`).join("\n");
+  }
 
   /** @param {string} rel execroot-relative path */
   const fromRoot = (rel) => readFile(path.join(executionRoot, rel));
@@ -98,8 +113,7 @@ export function createServer({ driver, executionRoot, port, log, appLabel }) {
     for (const spec of unresolved) {
       if (reported.has(spec)) continue;
       reported.add(spec);
-      const hint = isBareSpecifier(spec, manifest) ? `; add it to npm_imports of ${appLabel}` : "";
-      log(`cannot resolve "${spec}" from ${key}${hint}`);
+      log(`cannot resolve "${spec}" from ${key}${hintFor(spec, manifest)}`);
     }
     return {
       status: 200,
@@ -148,19 +162,27 @@ export function createServer({ driver, executionRoot, port, log, appLabel }) {
     for (const client of wss.clients) client.send(data);
   }
 
+  wss.on("connection", (ws) => {
+    if (lastError !== null) ws.send(JSON.stringify({ type: "error", message: lastError }));
+  });
+
   // Events are handled in order: an update or reload goes out only once the new
   // outputs are held.
   let events = Promise.resolve();
-  // After a failure the next good build sends at least "ok", which clears the
-  // overlay when an edit is reverted to the last good content.
-  let failed = false;
+  // The overlay text a browser should be showing (failed build or unresolved
+  // imports), or null. While set, the next build sends at least "ok", which
+  // clears the overlay when an edit is reverted to the last good content.
+  /** @type {string | null} */
+  let lastError = null;
   driver.on("built", (/** @type {import("./hmr.js").BuiltEvent} */ e) => {
     const arrived = performance.now();
-    const msg = decide(e, failed);
+    const msg = decide(e, lastError !== null);
+    lastError = checkImports(e.manifest);
     if (!msg) return;
-    failed = false;
+    const error = lastError;
     events = events.then(holdOutputs).then(() => {
       broadcast(msg);
+      if (error !== null) broadcast({ type: "error", message: error });
       if (msg.type === "update") log(`update: ${msg.modules.length} modules`);
       else if (msg.type === "reload") log(`reload: ${msg.reason}`);
       else if (msg.type === "ok") log("ok: overlay cleared");
@@ -169,7 +191,7 @@ export function createServer({ driver, executionRoot, port, log, appLabel }) {
     });
   });
   driver.on("failed", (/** @type {{ error: string }} */ e) => {
-    failed = true;
+    lastError = e.error;
     events = events.then(() => broadcast({ type: "error", message: e.error }));
   });
 
@@ -177,6 +199,7 @@ export function createServer({ driver, executionRoot, port, log, appLabel }) {
     /** @returns {Promise<number>} the bound port */
     async listen() {
       await holdOutputs();
+      if (driver.manifest) lastError = checkImports(driver.manifest);
       return new Promise((resolve, reject) => {
         server.once("error", reject);
         server.listen(port, "127.0.0.1", () => {

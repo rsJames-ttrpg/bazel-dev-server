@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isBareSpecifier, rewriteImports } from "./rewrite.js";
+import { findUnresolved, isBareSpecifier, rewriteImports } from "./rewrite.js";
 const manifest = {
   version: 1, entry: "app/src/main.tsx", packages: { "@acme/ui": "libs/ui" },
   npm: { dir: "d", entries: { react: "react.js", "react/jsx-runtime": "react__jsx-runtime.js" } },
@@ -32,4 +32,11 @@ test("isBareSpecifier excludes relative and workspace package specifiers", () =>
   assert.equal(isBareSpecifier("lodash", manifest), true);
   assert.equal(isBareSpecifier("./Missing", manifest), false);
   assert.equal(isBareSpecifier("@acme/ui/missing", manifest), false);
+});
+test("findUnresolved lists every import no resolver can serve", () => {
+  const manifest = { entry: "a/main.tsx", packages: { "@x/ui": "ui" }, npm: { dir: "n", entries: { react: "react.js" } },
+    modules: { "a/main.tsx": { imports: ["react", "./App", "./Missing", "@x/ui", "@x/ui/Gone", "lodash"] }, "a/App.tsx": { imports: [] }, "ui/index.ts": { imports: [] } } };
+  assert.deepEqual(findUnresolved(manifest), [
+    { key: "a/main.tsx", specifier: "./Missing" }, { key: "a/main.tsx", specifier: "@x/ui/Gone" }, { key: "a/main.tsx", specifier: "lodash" },
+  ]);
 });

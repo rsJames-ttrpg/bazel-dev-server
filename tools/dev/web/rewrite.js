@@ -78,3 +78,21 @@ export function rewriteImports(code, key, manifest) {
   }
   return { code: out, unresolved: [...unresolved].reverse() };
 }
+
+/**
+ * Pure: every import in the manifest that no resolver can serve, from the
+ * specifiers the transform recorded per module.
+ * @param {Manifest} manifest
+ * @returns {{ key: string, specifier: string }[]}
+ */
+export function findUnresolved(manifest) {
+  /** @type {{ key: string, specifier: string }[]} */
+  const out = [];
+  for (const key of Object.keys(manifest.modules).sort()) {
+    const imports = /** @type {{ imports?: string[] }} */ (manifest.modules[key]).imports ?? [];
+    for (const specifier of [...new Set(imports)].sort()) {
+      if (resolve(specifier, key, manifest) === null) out.push({ key, specifier });
+    }
+  }
+  return out;
+}
