@@ -60,13 +60,14 @@ test("update adds new roots and unwatches removed ones", () => {
 test("events under a removed root are dropped", async () => {
   const fake = new EventEmitter(); fake.close = async () => {};
   fake.add = () => {}; fake.unwatch = () => {};
-  const w = createWatcher({ root: "/r", roots: ["a", "b"], files: [], debounceMs: 10, watch: () => fake });
+  const w = createWatcher({ root: "/r", roots: ["a", "b"], files: ["t.json"], debounceMs: 10, watch: () => fake });
   const calls = []; w.on("change", (p) => calls.push(p));
-  w.update({ roots: ["b"], files: [] });
+  w.update({ roots: ["b"], files: ["t.json"] });
   fake.emit("all", "change", "/r/a/x.ts");
   fake.emit("all", "change", "/r/b/y.ts");
+  fake.emit("all", "change", "/r/t.json");
   await new Promise((r) => setTimeout(r, 30));
-  assert.deepEqual(calls, [["/r/b/y.ts"]]);
+  assert.deepEqual(calls, [["/r/b/y.ts", "/r/t.json"]]);
 });
 
 test("delivers watcher errors", async () => {

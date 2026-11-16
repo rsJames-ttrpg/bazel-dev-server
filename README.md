@@ -11,6 +11,6 @@ bazel run //examples/hello:hello.dev
 - Fast Refresh: editing a component updates it in place and keeps its state; editing the entry or a non-component module reloads the page.
 - CSS: `.css` sources go through Lightning CSS, `*.module.css` exports hashed class names, and a stylesheet edit hot-swaps without a reload.
 - Typecheck: `bazel test //examples/hello:hello.typecheck` runs `tsc` over the app and its libraries.
-- Hardening: deleted or renamed files, `BUILD` changes, a concurrent Bazel command and watcher errors are each reported in the terminal and the overlay; see "When things go wrong" in the user guide.
+- Hardening: a deleted or renamed file shows in the browser overlay and the page recovers when it is fixed; `BUILD` changes re-root the watcher (`watching …`), and a concurrent Bazel command and watcher errors are reported in the terminal. See "When things go wrong" in the user guide.
 
 Read the [user guide](docs/using-the-dev-server.md) to declare your own app, and the [design spec](docs/superpowers/specs/2026-11-15-hermetic-dev-server-design.md) for how it works.

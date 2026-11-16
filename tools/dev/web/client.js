@@ -3,7 +3,7 @@
 // injected into <head> ahead of the entry module, so __devRefresh exists before
 // any app module evaluates.
 import * as RefreshRuntime from "/npm/react-refresh__runtime.js";
-import { classMapChanged, registerExportsForReactRefresh, shouldReloadAfterUpdate, validateRefreshBoundary } from "./refresh.js";
+import { classMapChanged, registerExportsForReactRefresh, shouldReloadAfterFix, validateRefreshBoundary } from "./refresh.js";
 
 const OVERLAY_ID = "__dev_error_overlay";
 
@@ -86,6 +86,14 @@ async function applyUpdate(updates) {
   }
 }
 
+// A page whose module graph failed to load never mounted; a fix reloads it.
+function reloadIfNeverMounted(overlayShowing) {
+  if (!shouldReloadAfterFix(new Set(modules.keys()), overlayShowing)) return false;
+  console.warn("[dev] reload: page did not load; reloading after fix");
+  location.reload();
+  return true;
+}
+
 // Updates are applied one message at a time, in the order they arrive.
 let pending = Promise.resolve();
 
@@ -93,16 +101,12 @@ function connect() {
   const ws = new WebSocket(`ws://${location.host}/@dev/ws`);
   ws.addEventListener("message", (event) => {
     const msg = JSON.parse(event.data);
+    // Read on arrival, before hideError(): an overlay here may mean the page never loaded.
+    const overlayShowing = !!document.getElementById(OVERLAY_ID);
     if (msg.type === "update") {
-      // Read before hideError(): an overlay here may mean the page never loaded.
-      const overlayShowing = !!document.getElementById(OVERLAY_ID);
       hideError();
       pending = pending.then(() => {
-        if (shouldReloadAfterUpdate(msg.modules, new Set(modules.keys()), overlayShowing)) {
-          console.warn("[dev] reload: page did not load; reloading after fix");
-          location.reload();
-          return;
-        }
+        if (reloadIfNeverMounted(overlayShowing)) return;
         return applyUpdate(msg.modules);
       }).catch((err) => {
         console.error("[dev] update failed, reloading", err);
@@ -113,6 +117,7 @@ function connect() {
       location.reload();
     } else if (msg.type === "ok") {
       hideError();
+      reloadIfNeverMounted(overlayShowing);
     } else if (msg.type === "error") {
       showError(msg.message);
     }

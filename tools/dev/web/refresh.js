@@ -52,17 +52,14 @@ export function classMapChanged(prev, next) {
 }
 
 /**
- * Whether an `update` must reload the page instead of hot-patching it. When the page's
- * module graph failed to load (the overlay is showing), the app never mounted and its
- * modules never registered, so a hot update has nothing to patch; a stylesheet alone
- * cannot un-blank it either. Reload when the overlay is showing and no JS module of the
- * update is registered on this page.
- * @param {{ key: string, kind?: string }[]} updates
+ * Whether a fix (`update` or `ok`) must reload the page instead of only clearing the
+ * overlay or hot-patching. When the overlay was showing and this page never registered
+ * a module, its module graph failed to load and the app never mounted, so there is
+ * nothing to patch.
  * @param {Set<string>} registeredKeys
  * @param {boolean} overlayShowing
  * @returns {boolean}
  */
-export function shouldReloadAfterUpdate(updates, registeredKeys, overlayShowing) {
-  if (!overlayShowing) return false;
-  return !updates.some(({ key, kind }) => kind !== "css" && registeredKeys.has(key));
+export function shouldReloadAfterFix(registeredKeys, overlayShowing) {
+  return overlayShowing && registeredKeys.size === 0;
 }
