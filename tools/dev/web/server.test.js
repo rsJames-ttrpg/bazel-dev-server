@@ -220,3 +220,37 @@ test("a connection during a failed build gets the overlay", async (t) => {
   await settle();
   assert.deepEqual(got[0], { type: "error", message: "boom" });
 });
+test("a packages change reloads and replays a new unresolved import", async (t) => {
+  const { root, driver } = await fixture(); resolvable(driver);
+  const s = createServer({ driver, executionRoot: root, port: 0, log: () => {}, appLabel: "//app:app" });
+  const port = await s.listen();
+  t.after(() => s.close());
+  const got = await connect(port, t);
+  driver.manifest.modules["app/src/main.tsx"].imports = ["./App", "@x/ui"];
+  driver.emit("built", { manifest: driver.manifest, changed: [], added: [], removed: [], other: ["packages"] });
+  await settle();
+  assert.deepEqual(got.map((g) => g.type), ["reload", "error"]);
+  assert.equal(got[0].reason, "packages changed");
+  assert.match(got[1].message, /app\/src\/main\.tsx: "@x\/ui"/);
+});
+test("cannot resolve lines are logged only when the unresolved set changes", async (t) => {
+  const { root, driver } = await fixture();
+  const lines = [];
+  const s = createServer({ driver, executionRoot: root, port: 0, log: (l) => lines.push(l), appLabel: "//app:app" });
+  await s.listen();
+  t.after(() => s.close());
+  const count = () => lines.filter((l) => l.startsWith("cannot resolve")).length;
+  const ev = (changed) => ({ manifest: driver.manifest, changed, added: [], removed: [], other: [] });
+  assert.equal(count(), 1);
+  driver.emit("built", ev([])); driver.emit("built", ev(["app/src/App.tsx"]));
+  await settle();
+  assert.equal(count(), 1);
+  driver.manifest.modules["app/src/main.tsx"].imports = ["./App", "./Missing", "./Gone"];
+  driver.emit("built", ev(["app/src/main.tsx"]));
+  await settle();
+  assert.equal(count(), 3);
+  driver.emit("failed", { error: "boom" });
+  driver.emit("built", ev([]));
+  await settle();
+  assert.equal(count(), 5);
+});

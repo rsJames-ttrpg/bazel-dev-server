@@ -10,6 +10,9 @@ import { createWatcher as realCreateWatcher } from "./watcher.js";
 /** @param {Manifest} manifest @returns {WatchSet} what to watch; older manifests watch the workspace */
 const watchSetOf = (manifest) => manifest.watch ?? { roots: [""], files: [] };
 
+/** What to watch while the last build failed: the whole workspace, so a fix anywhere is seen. */
+const WIDE = Object.freeze({ roots: [""], files: [] });
+
 /** @param {WatchSet} w */
 const watchingLine = (w) => `watching ${w.roots.map((r) => (r === "" ? "." : r)).join(", ")}`;
 
@@ -18,7 +21,10 @@ const watchingLine = (w) => `watching ${w.roots.map((r) => (r === "" ? "." : r))
  * `building`, `waiting`, `built` and `failed`.
  * At most one build cycle (build plus manifest load) is in flight; changes during a cycle
  * trigger exactly one more cycle afterwards. A watcher error, or `requestBuild()`, counts
- * as a change. After a good build the watcher is re-rooted if the manifest's watch set changed.
+ * as a change. After every cycle the watcher is pointed at the manifest's watch set, or at the
+ * whole workspace while the last build failed (a new dependency's first build may fail before
+ * its package is watched); this also re-adds a watched root that was deleted and recreated.
+ * A good cycle that added watched paths runs one more cycle, for edits made there meanwhile.
  * @param {{ workspaceDir: string, target: string, manifestPath: string, bazelArgs?: string[], log: (line: string) => void,
  *   createWatcher?: typeof realCreateWatcher, createBuilder?: typeof realCreateBuilder,
  *   loadManifest?: typeof realLoadManifest }} opts
@@ -51,6 +57,28 @@ export function createDriver({
 
   let inFlight = false;
   let dirty = false;
+  /** The watch set last applied to the watcher. */
+  /** @type {WatchSet | null} */
+  let applied = null;
+
+  /**
+   * Point the watcher at `next`, logging only when it differs from the applied set.
+   * @param {WatchSet} next @param {boolean} failed @returns {number} paths the watcher added
+   */
+  function rewatch(next, failed) {
+    if (!watcher) return 0;
+    try {
+      const result = watcher.update(next);
+      if (JSON.stringify(applied) !== JSON.stringify(next)) {
+        applied = next;
+        log(failed ? "watching . (last build failed; widened)" : watchingLine(next));
+      }
+      return result?.added ?? 0;
+    } catch (err) {
+      log(`watcher error: ${err instanceof Error ? err.message : err}; roots unchanged`);
+      return 0;
+    }
+  }
 
   /** Serialise cycles: a change during a cycle sets `dirty`, which runs one more afterwards. */
   async function onChange() {
@@ -78,6 +106,7 @@ export function createDriver({
     if (!result.ok) {
       const ms = Math.round(tBuilt - t0);
       log(`build failed in ${ms}ms`);
+      rewatch(WIDE, true);
       emitter.emit("failed", { error: result.error });
       return;
     }
@@ -97,19 +126,12 @@ export function createDriver({
       if (diff.removed.length) line += `, ${diff.removed.length} removed`;
       for (const what of diff.other) line += `, ${what} changed`;
       log(line);
-      const nextWatch = watchSetOf(next);
-      if (watcher && JSON.stringify(prev && watchSetOf(prev)) !== JSON.stringify(nextWatch)) {
-        try {
-          watcher.update(nextWatch);
-          log(watchingLine(nextWatch));
-        } catch (err) {
-          log(`watcher error: ${err instanceof Error ? err.message : err}; roots unchanged`);
-        }
-      }
+      if (rewatch(watchSetOf(next), false) > 0) dirty = true;
       emitter.emit("built", { manifest: next, ...diff, timings });
     } catch (err) {
       const ms = Math.round(performance.now() - t0);
       log(`build failed in ${ms}ms`);
+      rewatch(WIDE, true);
       emitter.emit("failed", { error: `could not load manifest: ${err instanceof Error ? err.message : err}` });
     }
   }
@@ -122,6 +144,7 @@ export function createDriver({
       driver.manifest = await loadManifest(manifestPath);
       const watch = watchSetOf(driver.manifest);
       watcher = createWatcher({ root: workspaceDir, roots: watch.roots, files: watch.files });
+      applied = watch;
       watcher.on("change", () => {
         void onChange();
       });

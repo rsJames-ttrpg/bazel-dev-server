@@ -41,14 +41,16 @@ export function createServer({ driver, executionRoot, port, log, appLabel }) {
     isBareSpecifier(spec, manifest) ? `; add it to npm_imports of ${appLabel}` : `; not in srcs of ${appLabel} or its deps`;
 
   /**
-   * Log every unresolved import of the manifest and return the overlay text.
-   * @param {Manifest} manifest @returns {string | null}
+   * Return the overlay text for the manifest's unresolved imports, logging each one unless
+   * the text equals `prev` (the overlay already standing), so unrelated builds stay quiet.
+   * @param {Manifest} manifest @param {string | null} [prev] @returns {string | null}
    */
-  function checkImports(manifest) {
+  function checkImports(manifest, prev) {
     const list = findUnresolved(manifest);
-    for (const { key, specifier } of list) log(`cannot resolve "${specifier}" from ${key}${hintFor(specifier, manifest)}`);
     if (!list.length) return null;
-    return "unresolved imports:\n" + list.map(({ key, specifier }) => `  ${key}: "${specifier}"${hintFor(specifier, manifest)}`).join("\n");
+    const text = "unresolved imports:\n" + list.map(({ key, specifier }) => `  ${key}: "${specifier}"${hintFor(specifier, manifest)}`).join("\n");
+    if (text !== prev) for (const { key, specifier } of list) log(`cannot resolve "${specifier}" from ${key}${hintFor(specifier, manifest)}`);
+    return text;
   }
 
   /** @param {string} rel execroot-relative path */
@@ -178,7 +180,7 @@ export function createServer({ driver, executionRoot, port, log, appLabel }) {
     const arrived = performance.now();
     const prev = lastError;
     const msg = decide(e, prev !== null);
-    lastError = checkImports(e.manifest);
+    lastError = checkImports(e.manifest, prev);
     if (!msg) return;
     // Nothing changed and the same overlay is already showing: leave it alone.
     if (msg.type === "ok" && lastError !== null && lastError === prev) return;

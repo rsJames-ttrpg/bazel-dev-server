@@ -10,7 +10,7 @@ const STDERR_DRAIN_MS = 500;
  * Bazel's progress chatter, left out of a failed build's error text. `INFO: From …`
  * lines are kept: they head an action's own output.
  */
-const PROGRESS_LINE = /^(Loading:|Analyzing:|\[\d+ \/ \d+\]|INFO: (?!From ))/;
+const PROGRESS_LINE = /^(Loading:|Analyzing:|Computing main repo mapping:|\[\d+ \/ \d+\]|INFO: (?!From ))/;
 
 /** @param {string} line */
 const isProgressLine = (line) => line.trim() === "" || PROGRESS_LINE.test(line);
@@ -102,13 +102,14 @@ export function createBuilder({
       // `exit` can fire before stderr has drained; wait for its `end` (capped, since
       // a grandchild holding the pipe open would keep it from ending) before
       // reading the tail.
-      child.on("exit", (/** @type {number | null} */ code) => {
+      child.on("exit", (/** @type {number | null} */ code, /** @type {string | null} */ signal) => {
         clearTimeout(timer);
         const finish = () => {
           if (partial) pushLine(partial);
           partial = "";
           const ms = Math.round(performance.now() - started);
-          const error = lines.join("\n");
+          // A killed Bazel may print nothing but progress; say how it ended.
+          const error = lines.join("\n") || `bazel build exited (code ${code ?? "none"}, signal ${signal ?? "none"})`;
           resolve(code === 0 ? { ok: true, ms } : { ok: false, error, ms });
         };
         const stderr = child.stderr;

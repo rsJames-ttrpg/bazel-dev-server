@@ -6,7 +6,7 @@ import { createDriver } from "./driver.js";
 const mk = (mods) => ({ version: 1, modules: Object.fromEntries(Object.entries(mods).map(([k, d]) => [k, { digest: d, output: k, refresh: false, imports: [] }])) });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function setup({ builds, manifests }) {
+function setup({ builds, manifests, update = () => {} }) {
   const logs = [];
   const listeners = { change: [], error: [] };
   const updates = [];
@@ -14,7 +14,7 @@ function setup({ builds, manifests }) {
   let requests = 0;
   const watcher = {
     on: (e, cb) => { listeners[e].push(cb); },
-    update: (next) => { updates.push(next); },
+    update: (next) => { updates.push(next); return update(next); },
     close: async () => {},
   };
   const builder = {
@@ -145,7 +145,8 @@ test("re-roots the watcher when the manifest's watch section changes", async () 
   await sleep(30);
   await s.driver.stop();
   assert.equal(s.builds(), 2);
-  assert.deepEqual(s.updates, [m2.watch]);
+  // update runs after every cycle (it also revives deleted roots); the log only on a change
+  assert.deepEqual(s.updates, [m2.watch, m2.watch]);
   assert.equal(s.logs[0], "watching app");
   assert.match(s.logs[1], /^built in /);
   assert.equal(s.logs[2], "watching app, lib");
@@ -223,4 +224,74 @@ test("a throwing watcher.update is logged and does not fail the build", async ()
   assert.deepEqual(events, ["built"]);
   assert.ok(logs.includes("watcher error: EMFILE; roots unchanged"));
   assert.ok(!logs.some((l) => l.startsWith("build failed")));
+});
+
+const WIDE = { roots: [""], files: [] };
+
+test("a failed build widens the watch to the workspace; the next good build narrows it", async () => {
+  const s = setup({
+    builds: [{ result: { ok: false, error: "boom", ms: 1 } }, { result: { ok: false, error: "boom", ms: 1 } }, { result: { ok: true, ms: 1 } }],
+    manifests: [withWatch(["app"]), withWatch(["app"])],
+  });
+  await s.driver.start();
+  s.change();
+  await sleep(30);
+  s.change();
+  await sleep(30);
+  s.change();
+  await sleep(30);
+  await s.driver.stop();
+  assert.equal(s.builds(), 3);
+  assert.deepEqual(s.updates, [WIDE, WIDE, { roots: ["app"], files: [] }]);
+  assert.equal(s.logs[0], "watching app");
+  assert.match(s.logs[1], /^build failed in /);
+  assert.equal(s.logs[2], "watching . (last build failed; widened)");
+  assert.match(s.logs[3], /^build failed in /);
+  assert.match(s.logs[4], /^built in /);
+  assert.equal(s.logs[5], "watching app");
+  assert.equal(s.logs.length, 6);
+});
+
+test("a manifest that fails to load widens the watch too", async () => {
+  const s = setup({
+    builds: [{ result: { ok: true, ms: 1 } }],
+    manifests: [withWatch(["app"])],
+  });
+  await s.driver.start();
+  s.change();
+  await sleep(30);
+  await s.driver.stop();
+  assert.deepEqual(s.updates, [WIDE]);
+  assert.ok(s.logs.includes("watching . (last build failed; widened)"), JSON.stringify(s.logs));
+});
+
+test("a workspace-wide watch is not widened again or re-logged", async () => {
+  const s = setup({
+    builds: [{ result: { ok: false, error: "boom", ms: 1 } }, { result: { ok: true, ms: 1 } }],
+    manifests: [mk({ a: "1" }), mk({ a: "1" })],
+  });
+  await s.driver.start();
+  s.change();
+  await sleep(30);
+  s.change();
+  await sleep(30);
+  await s.driver.stop();
+  assert.deepEqual(s.updates, [WIDE, WIDE]);
+  assert.equal(s.logs.filter((l) => l.startsWith("watching")).length, 1);
+});
+
+test("a good build whose watch adds a path runs exactly one more cycle", async () => {
+  const s = setup({
+    builds: [{ result: { ok: true, ms: 1 } }, { result: { ok: true, ms: 1 } }, { result: { ok: true, ms: 1 } }],
+    manifests: [withWatch(["app"]), withWatch(["app", "lib"]), withWatch(["app", "lib"]), withWatch(["app", "lib"])],
+    update: (() => { let cur = JSON.stringify({ roots: ["app"], files: [] }); return (next) => {
+      const added = JSON.stringify(next) === cur ? 0 : 1; cur = JSON.stringify(next); return { added, removed: 0 };
+    }; })(),
+  });
+  await s.driver.start();
+  s.change();
+  await sleep(80);
+  await s.driver.stop();
+  assert.equal(s.builds(), 2);
+  assert.equal(s.logs.filter((l) => l === "watching app, lib").length, 1);
 });

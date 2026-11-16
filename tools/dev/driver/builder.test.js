@@ -118,3 +118,17 @@ test("progress lines do not crowd useful lines out of the 60-line tail", async (
   const r = await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
   assert.match(r.error, /real failure/);
 });
+test("a failed build with no error text reports the exit code and signal", async () => {
+  const { spawn } = fakeSpawn((c) => { c.stderr.emit("data", Buffer.from("Loading: \nINFO: Invocation ID: x\n")); c.emit("exit", null, "SIGKILL"); });
+  const r = await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
+  assert.equal(r.ok, false);
+  assert.equal(r.error, "bazel build exited (code none, signal SIGKILL)");
+  const { spawn: spawn2 } = fakeSpawn((c) => c.emit("exit", 37, null));
+  const r2 = await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn: spawn2 }).request();
+  assert.equal(r2.error, "bazel build exited (code 37, signal none)");
+});
+test("Computing main repo mapping is a progress line", async () => {
+  const { spawn } = fakeSpawn((c) => { c.stderr.emit("data", Buffer.from("Computing main repo mapping: \nERROR: real\n")); c.emit("exit", 1); });
+  const r = await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
+  assert.equal(r.error, "ERROR: real");
+});
