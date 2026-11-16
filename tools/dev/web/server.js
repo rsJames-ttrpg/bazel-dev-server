@@ -176,9 +176,12 @@ export function createServer({ driver, executionRoot, port, log, appLabel }) {
   let lastError = null;
   driver.on("built", (/** @type {import("./hmr.js").BuiltEvent} */ e) => {
     const arrived = performance.now();
-    const msg = decide(e, lastError !== null);
+    const prev = lastError;
+    const msg = decide(e, prev !== null);
     lastError = checkImports(e.manifest);
     if (!msg) return;
+    // Nothing changed and the same overlay is already showing: leave it alone.
+    if (msg.type === "ok" && lastError !== null && lastError === prev) return;
     const error = lastError;
     events = events.then(holdOutputs).then(() => {
       broadcast(msg);

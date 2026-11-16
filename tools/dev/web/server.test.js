@@ -194,6 +194,11 @@ test("unresolved imports after a build are shown and replayed to new connections
   const got2 = await connect(port, t);
   await settle();
   assert.deepEqual(got2, [got1[2]]);
+  const before = lines.length;
+  driver.emit("built", ev([])); driver.emit("built", ev([]));
+  await settle();
+  assert.deepEqual(got1.map((g) => g.type), ["error", "update", "error"]);
+  assert.ok(!lines.slice(before).some((l) => l.startsWith("ok:")), JSON.stringify(lines));
   resolvable(driver);
   driver.emit("built", ev([]));
   await settle();
