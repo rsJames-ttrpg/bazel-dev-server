@@ -2,6 +2,7 @@
   "name": "hermetic-dev-server",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@8.15.9",
   "dependencies": {
     "normalize.css": "8.0.1",
     "react": "^19.0.0",

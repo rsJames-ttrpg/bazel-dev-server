@@ -42,17 +42,32 @@ bazel run //examples/hello:hello.dev
 
 Replace the label with your own `<name>.dev`. The dev configuration is reached only through a rule transition, never a command-line flag. Build the production bundle with `bazel build //path:<name>.bundle`.
 
+To pass Bazel options to the nested builds, give them after `--` as `--bazel-arg`, once per option:
+
+```
+bazel run //examples/hello:hello.dev -- --bazel-arg=--config=x
+```
+
+They are forwarded to the nested `bazel info`, `cquery` and `build`. Only command options work this way, not startup options. If the outer `bazel run` itself was given flags that change the output path, the server still refuses to start (see below); put those in `.bazelrc`.
+
+The server watches only the Bazel packages that hold the app's sources and `index.html`, plus `tsconfig.json`. Every build is a full incremental `bazel build` of `<name>.manifest.dev`, so a change the watcher missed is picked up by the next build. To force one, type `r` and press Enter in the server's terminal. This works only when stdin is a terminal; a server started with stdin redirected, for example in the background with `</dev/null`, ignores it. Run the server in the foreground or with stdin from `/dev/null`: a `bazel run … &` that keeps the terminal as stdin can be stopped by `SIGTTIN`.
+
 ## What the terminal prints
 
-- `dev server at http://localhost:5173` means the server is ready. It listens on 127.0.0.1 only.
+- `watching <dirs>` is logged at start and lists the watched packages, for example `watching examples/hello, examples/shared/ui`. It is logged again after a build that changed them, for example when a `deps` entry was added or removed.
+- `dev server at http://127.0.0.1:5173` means the server is ready. It listens on 127.0.0.1 only.
 - `built in <n>ms (bazel <m>ms): <k> modules changed` means a save triggered one nested `bazel build` of `<name>.manifest.dev`. `n` is the total time, `m` the time spent in Bazel, `k` the number of modules whose output changed. `, <a> added`, `, <r> removed`, `, npm changed` or `, index changed` is appended when modules were added or removed or the npm prebundles or `index.html` changed.
 - `update: <k> modules` means the browser was sent `update` for `k` changed modules and hot-updates them in place.
 - `reload: <reason>` means the browser was sent `reload` and reloads the page. The reason names what forced it, for example `examples/hello/src/main.tsx cannot hot-update`, `1 removed` or `index changed`.
 - `ok: overlay cleared` means the browser was sent `ok`: the first successful build after a failure changed nothing it needs, so it only clears the error overlay.
 - `pushed in <n>ms` follows `update:`, `reload:` or `ok:` only when sending took more than 10 ms after the build finished; normally it is absent.
-- `build failed in <n>ms` means the build failed, for example on a syntax error. The browser receives `error` and shows an overlay with Bazel's output.
-- `cannot resolve "<spec>" from <key>; add it to npm_imports of <label>` is logged once for a bare import that is not in `npm_imports`. A relative or workspace-package import that matches no module logs `cannot resolve "<spec>" from <key>` without the suffix. Either way the import is served untouched, so it fails in the browser.
-- `waiting for Bazel server (another command holds the lock)` means another Bazel command in the workspace holds the lock; the build starts when it finishes.
+- `build failed in <n>ms` means the build failed, for example on a syntax error. The browser receives `error` and shows an overlay with Bazel's errors.
+- `cannot resolve "<spec>" from <key>; add it to npm_imports of <label>` means a bare import is not in `npm_imports`. `cannot resolve "<spec>" from <key>; not in srcs of <label> or its deps` means a relative or workspace-package import matches no module, for example after its file was deleted or renamed. Every import of the app is checked after each build, so these lines appear right after the `built in` line, and the browser shows an overlay starting `unresolved imports:` with one `  <key>: "<spec>"<hint>` line per import. The overlay stays until a build resolves every import, then `ok: overlay cleared` or the update clears it. A browser that connects while an error stands, for example after a reload, is shown it too.
+- `rebuild requested` follows `r` + Enter in the terminal and is followed by one build.
+- `watcher error: <message>; rebuilding` means the file watcher reported an error. One build runs, so nothing that changed is missed.
+- `waiting for Bazel server (another command holds the lock)` is logged when a build has waited 2 s for another Bazel command in the workspace; the build starts when it finishes.
+- `analysis cache discarded: Bazel options changed (another command?); this build is slower` means Bazel was last run with different options, usually by another command in the workspace, so this build re-analyzes. The next build is fast again.
+- `dev server: bazel <subcommand> failed (exit <code>)` means a startup step failed, for example a `--bazel-arg` Bazel rejected. Bazel's own message is printed above it.
 - `dev server: the running binary was built with different Bazel flags than the nested build will use (...)` means `bazel run` was given flags that change the output path. Put them in `.bazelrc` so the nested build uses them too.
 
 ## What hot-updates and what reloads
@@ -64,12 +79,19 @@ The browser holds a WebSocket at `/@dev/ws` and receives four messages:
 | `update` | Every changed module can hot-update. Lists each module's key, digest and kind. | Re-imports each module as `/<key>?v=<digest>`, then runs React Refresh. Clears the overlay. |
 | `reload` | Any changed module cannot hot-update, a module was removed, or the npm prebundles or `index.html` changed. | Reloads the page. |
 | `ok` | A build succeeds with nothing to send after a failed build, for example when a syntax error is reverted to the last good content. | Clears the overlay. |
-| `error` | The build failed. | Shows the overlay with Bazel's output. The page keeps running. |
+| `error` | The build failed, or an import cannot be resolved. | Shows the overlay with Bazel's errors or the unresolved imports. The page keeps running. |
 
 - A module whose exports are all React components hot-updates. Component state survives: in `examples/hello`, a counter at 3 stays at 3 after the `<h1>` text changes.
 - A stylesheet, plain or `*.module.css`, hot-updates: the new `.css.js` module replaces its `<style>` element and state survives. The exception is a `*.module.css` whose class map changes, because a class was added, renamed or removed: importers still hold the old map, so the browser logs `[dev] reload: <key>: class names changed` to its console and reloads. A stylesheet the page has not loaded, such as one belonging to a lazy route that is not mounted yet, is skipped rather than injected.
 - The entry module and any module that is not a component module reload the page, even for a comment-only edit, because its output changes.
 - If a module that was a component module starts exporting something that is not a component, or its exports change shape, the browser reloads after re-importing it and logs `[dev] reload: <key>: <reason>` to its console.
+
+## When things go wrong
+
+- **A file was deleted or renamed.** What happens depends on how the file is listed in `srcs`. A file matched by a `glob`, as in `examples/hello`, simply drops out of the build, which succeeds, and every import of the old name is unresolved: renaming `App.module.css` logs `cannot resolve "./App.module.css" from examples/hello/src/App.tsx; not in srcs of //examples/hello:hello or its deps`, and the overlay lists `examples/hello/src/App.tsx: "./App.module.css"`. A file named explicitly in `srcs`, as in `examples/shared/ui`, makes the build fail with Bazel's `missing input file` error in the overlay. Either way, fix the import or restore the file and the next build clears the overlay. Removing a module reloads the page, so the app may be blank until the import is fixed; if it is still blank after the fix, reload the page.
+- **A `BUILD` file changed.** It is in a watched package, so it triggers a build. If the build changes the set of packages, for example a library added to or removed from `deps`, the server logs `watching …` with the new list and watches the new packages' files from then on.
+- **Another Bazel command is running** in the same workspace. The build waits for it and logs `waiting for Bazel server …` after 2 s. If that command used different options, the next build logs `analysis cache discarded …` and is slower once.
+- **When to restart.** Changes to `MODULE.bazel`, `pnpm-lock.yaml`, `tools/` or `bazel/` are not watched and need a restart: stop the server and run `bazel run` again. Edits to files outside the watched packages trigger no build at all.
 
 ## Browser acceptance
 
@@ -112,7 +134,6 @@ The counter stayed at its value through all ten saves.
 - SWC strips types without checking them, so a type error does not fail the dev build; run `bazel test :<name>.typecheck`.
 - No Svelte.
 - Sources other than `.ts`, `.tsx` and `.css`, such as images and fonts, are not handled.
-- The hardening milestone of the design spec is not done: `BUILD` file changes, renames and watcher overflow get no special handling.
 - Linux and macOS only.
 
 See the [design spec](superpowers/specs/2026-11-15-hermetic-dev-server-design.md).
