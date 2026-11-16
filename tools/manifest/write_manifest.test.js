@@ -5,13 +5,13 @@ import os from "node:os";
 import path from "node:path";
 import { buildManifest, dirDigest, fileDigest } from "./write_manifest.js";
 
-test("builds a version 2 manifest keyed by workspace path", () => {
+test("builds a version 3 manifest keyed by workspace path", () => {
   const m = buildManifest({
     pkg: "examples/hello", entry: "examples/hello/src/main.tsx", indexHtml: "bazel-out/x/bin/examples/hello/index.html", indexDigest: "ix",
     modules: [{ key: "examples/hello/src/main.tsx", output: "bazel-out/x/bin/m.js", meta: { digest: "ab", kind: "css", refresh: false, imports: ["./App"] } }],
     npm: { dir: "bazel-out/x/bin/examples/hello/hello.npm", digest: "nd", entries: { react: "react.js" } }, packages: {},
   });
-  assert.equal(m.version, 2);
+  assert.equal(m.version, 3);
   assert.equal(m.modules["examples/hello/src/main.tsx"].kind, "css");
   assert.deepEqual(Object.keys(m.modules), ["examples/hello/src/main.tsx"]);
   assert.equal(m.modules["examples/hello/src/main.tsx"].digest, "ab");
@@ -49,4 +49,14 @@ test("npm and index digests follow file names and contents", () => {
   const i1 = fileDigest(index);
   fs.writeFileSync(index, "<html>2</html>");
   assert.notEqual(fileDigest(index), i1);
+});
+
+const watchBase = { pkg: "p", entry: "p/a.ts", indexHtml: "i", indexDigest: "", packages: {}, npm: { dir: "", digest: "", entries: {} }, modules: [] };
+test("version 3 carries a sorted, unique watch section", () => {
+  const m = buildManifest({ ...watchBase, watch: { roots: ["examples/hello", "examples/shared/ui", "examples/hello"], files: ["tsconfig.json"] } });
+  assert.equal(m.version, 3);
+  assert.deepEqual(m.watch, { roots: ["examples/hello", "examples/shared/ui"], files: ["tsconfig.json"] });
+});
+test("a missing watch section becomes empty lists", () => {
+  assert.deepEqual(buildManifest(watchBase).watch, { roots: [], files: [] });
 });

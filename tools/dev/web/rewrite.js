@@ -41,7 +41,7 @@ export function isBareSpecifier(spec, manifest) {
 function resolve(spec, key, manifest) {
   const file = manifest.npm.entries[spec];
   if (file !== undefined) return `/npm/${file}`;
-  for (const [name, root] of Object.entries(manifest.packages)) {
+  for (const [name, root] of Object.entries(manifest.packages).sort((a, b) => b[0].length - a[0].length)) {
     if (spec === name || spec.startsWith(name + "/")) {
       const found = findKey(path.posix.normalize(root + spec.slice(name.length)), manifest);
       return found && `/${found}`;
@@ -77,4 +77,22 @@ export function rewriteImports(code, key, manifest) {
     out = out.slice(0, imp.s) + replacement + out.slice(imp.e);
   }
   return { code: out, unresolved: [...unresolved].reverse() };
+}
+
+/**
+ * Pure: every import in the manifest that no resolver can serve, from the
+ * specifiers the transform recorded per module.
+ * @param {Manifest} manifest
+ * @returns {{ key: string, specifier: string }[]}
+ */
+export function findUnresolved(manifest) {
+  /** @type {{ key: string, specifier: string }[]} */
+  const out = [];
+  for (const key of Object.keys(manifest.modules).sort()) {
+    const imports = /** @type {{ imports?: string[] }} */ (manifest.modules[key]).imports ?? [];
+    for (const specifier of [...new Set(imports)].sort()) {
+      if (resolve(specifier, key, manifest) === null) out.push({ key, specifier });
+    }
+  }
+  return out;
 }

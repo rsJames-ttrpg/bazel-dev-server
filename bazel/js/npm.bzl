@@ -26,9 +26,6 @@ def npm_prebundle(name, npm_imports, npm_deps, dev):
     Returns:
         dict from specifier to output file name within the directory.
     """
-    for spec in npm_imports:
-        if spec.endswith(".css"):
-            fail('npm_imports entry "{}": stylesheets from npm packages are not supported yet; see docs/using-the-dev-server.md "Current limits"'.format(spec))
     entries = {spec: npm_entry_name(spec) + ".js" for spec in npm_imports}
     node_env = "development" if dev else "production"
     config = name + ".config.mjs"

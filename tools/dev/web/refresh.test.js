@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classMapChanged, registerExportsForReactRefresh, validateRefreshBoundary } from "./refresh.js";
+import { classMapChanged, registerExportsForReactRefresh, shouldReloadAfterFix, validateRefreshBoundary } from "./refresh.js";
 
 function fakeRuntime() {
   const calls = [];
@@ -46,4 +46,14 @@ test("class map: non-object treated as empty", () => {
   assert.equal(classMapChanged(null, undefined), false);
   assert.equal(classMapChanged("x", { a: "_h_a" }), true);
   assert.equal(classMapChanged({ a: "_h_a" }, 1), true);
+});
+
+test("fix while the overlay shows on a page that never registered a module: reload", () => {
+  assert.equal(shouldReloadAfterFix(new Set(), true), true);
+});
+test("fix while the overlay shows on a mounted page: no reload", () => {
+  assert.equal(shouldReloadAfterFix(new Set(["app/App.tsx"]), true), false);
+});
+test("no overlay: no reload even with nothing registered", () => {
+  assert.equal(shouldReloadAfterFix(new Set(), false), false);
 });

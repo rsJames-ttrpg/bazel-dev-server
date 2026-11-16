@@ -91,3 +91,44 @@ test("stdout is not piped", async () => {
   await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
   assert.deepEqual(spawned[0].opts.stdio, ["ignore", "ignore", "pipe"]);
 });
+
+test("reports a discarded analysis cache", async () => {
+  let discarded = 0;
+  const { spawn } = fakeSpawn((c) => { c.stderr.emit("data", Buffer.from("WARNING: Build option --compilation_mode has changed, discarding analysis cache.\n")); c.emit("exit", 0); });
+  await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn, onAnalysisDiscarded: () => { discarded++; } }).request();
+  assert.equal(discarded, 1);
+});
+test("error text omits Bazel progress lines but keeps action output", async () => {
+  const text = "Loading: \nAnalyzing: target //a:b (1 packages loaded)\n[3 / 5] Transforming a.ts\nINFO: Analyzed target //a:b (0 packages loaded).\nINFO: From Transforming examples/hello/src/App.tsx:\nerror: Expected ';'\nERROR: /w/BUILD:1:1: JsTransform failed\n";
+  const { spawn } = fakeSpawn((c) => { c.stderr.emit("data", Buffer.from(text)); c.emit("exit", 1); });
+  const r = await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
+  assert.deepEqual(r.error.split("\n"), ["INFO: From Transforming examples/hello/src/App.tsx:", "error: Expected ';'", "ERROR: /w/BUILD:1:1: JsTransform failed"]);
+});
+test("forwards bazel args before the target", async () => {
+  const { spawn, spawned } = fakeSpawn((c) => c.emit("exit", 0));
+  await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn, bazelArgs: ["--config=x", "--define=a=b"] }).request();
+  assert.deepEqual(spawned[0].args, ["build", "--config=x", "--define=a=b", "//a:b"]);
+});
+test("progress lines do not crowd useful lines out of the 60-line tail", async () => {
+  const { spawn } = fakeSpawn((c) => {
+    let text = "ERROR: real failure\n";
+    for (let i = 0; i < 200; i++) text += `[${i} / 300] 1 action running\n`;
+    c.stderr.emit("data", Buffer.from(text)); c.emit("exit", 1);
+  });
+  const r = await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
+  assert.match(r.error, /real failure/);
+});
+test("a failed build with no error text reports the exit code and signal", async () => {
+  const { spawn } = fakeSpawn((c) => { c.stderr.emit("data", Buffer.from("Loading: \nINFO: Invocation ID: x\n")); c.emit("exit", null, "SIGKILL"); });
+  const r = await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
+  assert.equal(r.ok, false);
+  assert.equal(r.error, "bazel build exited (code none, signal SIGKILL)");
+  const { spawn: spawn2 } = fakeSpawn((c) => c.emit("exit", 37, null));
+  const r2 = await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn: spawn2 }).request();
+  assert.equal(r2.error, "bazel build exited (code 37, signal none)");
+});
+test("Computing main repo mapping is a progress line", async () => {
+  const { spawn } = fakeSpawn((c) => { c.stderr.emit("data", Buffer.from("Computing main repo mapping: \nERROR: real\n")); c.emit("exit", 1); });
+  const r = await createBuilder({ workspaceDir: "/w", target: "//a:b", spawn }).request();
+  assert.equal(r.error, "ERROR: real");
+});

@@ -12,11 +12,14 @@ def _transform_modules_impl(ctx):
         packages.update(d[JsSourceInfo].packages)
 
     modules = []
+    outs = {}
     for src in srcs.to_list():
         if src.path.endswith(".d.ts"):
             continue  # typecheck inputs only
         if src.extension not in ("ts", "tsx", "css"):
             continue
+        if src.short_path.startswith("../"):
+            fail("sources from external repositories are not supported: " + src.short_path)
         if src.extension == "css":
             out = ctx.actions.declare_file(ctx.label.name + "/" + src.short_path + ".js")
             meta = ctx.actions.declare_file(ctx.label.name + "/" + src.short_path + ".js.meta.json")
@@ -24,6 +27,9 @@ def _transform_modules_impl(ctx):
             extra = [css]
         else:
             stem = src.short_path[:-(len(src.extension) + 1)]
+            if stem in outs:
+                fail("two sources share the output stem %s: %s, %s" % (stem, outs[stem], src.short_path))
+            outs[stem] = src.short_path
             out = ctx.actions.declare_file(ctx.label.name + "/" + stem + ".js")
             meta = ctx.actions.declare_file(ctx.label.name + "/" + stem + ".js.meta.json")
             extra = []

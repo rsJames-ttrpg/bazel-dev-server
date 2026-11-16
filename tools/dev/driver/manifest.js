@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 /**
  * @typedef {{ output: string, digest: string, refresh: boolean, imports: string[] }} ManifestModule
- * @typedef {{ version: number, modules: Record<string, ManifestModule> } & Record<string, any>} Manifest
+ * @typedef {{ version: number, modules: Record<string, ManifestModule>, watch?: { roots: string[], files: string[] } } & Record<string, any>} Manifest
  */
 
 /** @param {string} path @returns {Promise<Manifest>} */
@@ -13,7 +13,8 @@ export async function loadManifest(path) {
 
 /**
  * Compare module digests per key. A null `prev` puts every key in `added`.
- * `other` lists "npm" and/or "index" when the npm directory or index.html digest changed.
+ * `other` lists "npm" and/or "index" when the npm directory or index.html digest changed, then
+ * "packages" when the workspace package map changed (a package_name renamed or re-pointed).
  * @param {Manifest | null} prev @param {Manifest} next
  * @returns {{ changed: string[], added: string[], removed: string[], other: string[] }}
  */
@@ -31,6 +32,7 @@ export function diffManifests(prev, next) {
   if (prev) {
     if (prev.npm?.digest !== next.npm?.digest) other.push("npm");
     if (prev.indexDigest !== next.indexDigest) other.push("index");
+    if (JSON.stringify(prev.packages ?? {}) !== JSON.stringify(next.packages ?? {})) other.push("packages");
   }
   return { changed, added, removed, other };
 }

@@ -50,3 +50,16 @@ export function classMapChanged(prev, next) {
   for (const k of keys) if (!Object.prototype.hasOwnProperty.call(b, k) || a[k] !== b[k]) return true;
   return false;
 }
+
+/**
+ * Whether a fix (`update` or `ok`) must reload the page instead of only clearing the
+ * overlay or hot-patching. When the overlay was showing and this page never registered
+ * a module, its module graph failed to load and the app never mounted, so there is
+ * nothing to patch.
+ * @param {Set<string>} registeredKeys
+ * @param {boolean} overlayShowing
+ * @returns {boolean}
+ */
+export function shouldReloadAfterFix(registeredKeys, overlayShowing) {
+  return overlayShowing && registeredKeys.size === 0;
+}

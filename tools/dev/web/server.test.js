@@ -6,6 +6,9 @@ import os from "node:os";
 import path from "node:path";
 import { createServer } from "./server.js";
 
+/** Give the fixture's entry only resolvable imports. */
+function resolvable(driver) { driver.manifest.modules["app/src/main.tsx"].imports = ["./App"]; }
+
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "devsrv-"));
   await fs.mkdir(path.join(root, "out"), { recursive: true });
@@ -36,7 +39,7 @@ test("serves index, module and 404", async () => {
   await s.close();
 });
 test("reload only when something changed", async () => {
-  const { root, driver } = await fixture();
+  const { root, driver } = await fixture(); resolvable(driver);
   const s = createServer({ driver, executionRoot: root, port: 0, log: () => {}, appLabel: "//app:app" });
   const port = await s.listen();
   const ws = new (await import("ws")).WebSocket(`ws://localhost:${port}/@dev/ws`);
@@ -50,7 +53,7 @@ test("reload only when something changed", async () => {
   ws.close(); await s.close();
 });
 test("reload when only the npm directory or index.html changed", async (t) => {
-  const { root, driver } = await fixture();
+  const { root, driver } = await fixture(); resolvable(driver);
   const s = createServer({ driver, executionRoot: root, port: 0, log: () => {}, appLabel: "//app:app" });
   const port = await s.listen();
   t.after(() => s.close());
@@ -108,7 +111,9 @@ test("unresolved specifier is logged once across requests", async (t) => {
   t.after(() => s.close());
   await (await fetch(`http://localhost:${port}/app/src/main.tsx`)).text();
   await (await fetch(`http://localhost:${port}/app/src/main.tsx`)).text();
-  assert.deepEqual(lines, [`cannot resolve "./Missing" from app/src/main.tsx`]);
+  const line = `cannot resolve "./Missing" from app/src/main.tsx; not in srcs of //app:app or its deps`;
+  // once when the server starts listening, once for the first request, not again
+  assert.deepEqual(lines, [line, line]);
 });
 test("an unresolved bare specifier suggests npm_imports", async (t) => {
   const { root, driver } = await fixture();
@@ -118,10 +123,10 @@ test("an unresolved bare specifier suggests npm_imports", async (t) => {
   const port = await s.listen();
   t.after(() => s.close());
   await (await fetch(`http://localhost:${port}/app/src/main.tsx`)).text();
-  assert.deepEqual(lines, [`cannot resolve "lodash" from app/src/main.tsx; add it to npm_imports of //app:app`]);
+  assert.ok(lines.includes(`cannot resolve "lodash" from app/src/main.tsx; add it to npm_imports of //app:app`), JSON.stringify(lines));
 });
 test("first build after a failure sends ok even with no changes", async (t) => {
-  const { root, driver } = await fixture();
+  const { root, driver } = await fixture(); resolvable(driver);
   const lines = [];
   const s = createServer({ driver, executionRoot: root, port: 0, log: (l) => lines.push(l), appLabel: "//app:app" });
   const port = await s.listen();
@@ -138,7 +143,7 @@ test("first build after a failure sends ok even with no changes", async (t) => {
   assert.ok(lines.includes("ok: overlay cleared"), `log lines: ${JSON.stringify(lines)}`);
 });
 test("update for refresh modules, reload otherwise, ok after failure", async (t) => {
-  const { root, driver } = await fixture();
+  const { root, driver } = await fixture(); resolvable(driver);
   const s = createServer({ driver, executionRoot: root, port: 0, log: () => {}, appLabel: "//app:app" });
   const port = await s.listen();
   t.after(() => s.close());
@@ -163,4 +168,89 @@ test("module routes ignore the query string and serve refresh.js", async (t) => 
   const r = await fetch(`http://localhost:${port}/@dev/refresh.js`); assert.equal(r.status, 200);
   assert.equal(r.headers.get("content-type").split(";")[0], "text/javascript");
   const no = await fetch(`http://localhost:${port}/@dev/server.js`); assert.equal(no.status, 404);
+});
+
+async function connect(port, t) {
+  const ws = new (await import("ws")).WebSocket(`ws://localhost:${port}/@dev/ws`);
+  const got = []; ws.on("message", (m) => got.push(JSON.parse(m.toString())));
+  await new Promise((r) => ws.on("open", r));
+  t.after(() => ws.close());
+  return got;
+}
+const settle = () => new Promise((r) => setTimeout(r, 50));
+test("unresolved imports after a build are shown and replayed to new connections", async (t) => {
+  const { root, driver } = await fixture();
+  const lines = [];
+  const s = createServer({ driver, executionRoot: root, port: 0, log: (l) => lines.push(l), appLabel: "//app:app" });
+  const port = await s.listen();
+  t.after(() => s.close());
+  const got1 = await connect(port, t);
+  const ev = (changed) => ({ manifest: driver.manifest, changed, added: [], removed: [] });
+  driver.emit("built", ev(["app/src/App.tsx"]));
+  await settle();
+  // the first "error" is the replay on connect of the startup check
+  assert.deepEqual(got1.map((g) => g.type), ["error", "update", "error"]);
+  assert.match(got1[2].message, /app\/src\/main\.tsx: "\.\/Missing"/);
+  const got2 = await connect(port, t);
+  await settle();
+  assert.deepEqual(got2, [got1[2]]);
+  const before = lines.length;
+  driver.emit("built", ev([])); driver.emit("built", ev([]));
+  await settle();
+  assert.deepEqual(got1.map((g) => g.type), ["error", "update", "error"]);
+  assert.ok(!lines.slice(before).some((l) => l.startsWith("ok:")), JSON.stringify(lines));
+  resolvable(driver);
+  driver.emit("built", ev([]));
+  await settle();
+  assert.deepEqual(got1.map((g) => g.type), ["error", "update", "error", "ok"]);
+  assert.deepEqual(got2.map((g) => g.type), ["error", "ok"]);
+  assert.ok(lines.includes(`cannot resolve "./Missing" from app/src/main.tsx; not in srcs of //app:app or its deps`));
+  const got3 = await connect(port, t);
+  await settle();
+  assert.deepEqual(got3, []);
+});
+test("a connection during a failed build gets the overlay", async (t) => {
+  const { root, driver } = await fixture();
+  resolvable(driver);
+  const s = createServer({ driver, executionRoot: root, port: 0, log: () => {}, appLabel: "//app:app" });
+  const port = await s.listen();
+  t.after(() => s.close());
+  driver.emit("failed", { error: "boom" });
+  const got = await connect(port, t);
+  await settle();
+  assert.deepEqual(got[0], { type: "error", message: "boom" });
+});
+test("a packages change reloads and replays a new unresolved import", async (t) => {
+  const { root, driver } = await fixture(); resolvable(driver);
+  const s = createServer({ driver, executionRoot: root, port: 0, log: () => {}, appLabel: "//app:app" });
+  const port = await s.listen();
+  t.after(() => s.close());
+  const got = await connect(port, t);
+  driver.manifest.modules["app/src/main.tsx"].imports = ["./App", "@x/ui"];
+  driver.emit("built", { manifest: driver.manifest, changed: [], added: [], removed: [], other: ["packages"] });
+  await settle();
+  assert.deepEqual(got.map((g) => g.type), ["reload", "error"]);
+  assert.equal(got[0].reason, "packages changed");
+  assert.match(got[1].message, /app\/src\/main\.tsx: "@x\/ui"/);
+});
+test("cannot resolve lines are logged only when the unresolved set changes", async (t) => {
+  const { root, driver } = await fixture();
+  const lines = [];
+  const s = createServer({ driver, executionRoot: root, port: 0, log: (l) => lines.push(l), appLabel: "//app:app" });
+  await s.listen();
+  t.after(() => s.close());
+  const count = () => lines.filter((l) => l.startsWith("cannot resolve")).length;
+  const ev = (changed) => ({ manifest: driver.manifest, changed, added: [], removed: [], other: [] });
+  assert.equal(count(), 1);
+  driver.emit("built", ev([])); driver.emit("built", ev(["app/src/App.tsx"]));
+  await settle();
+  assert.equal(count(), 1);
+  driver.manifest.modules["app/src/main.tsx"].imports = ["./App", "./Missing", "./Gone"];
+  driver.emit("built", ev(["app/src/main.tsx"]));
+  await settle();
+  assert.equal(count(), 3);
+  driver.emit("failed", { error: "boom" });
+  driver.emit("built", ev([]));
+  await settle();
+  assert.equal(count(), 5);
 });

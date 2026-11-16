@@ -19,3 +19,11 @@ test("npm and index digest changes are reported in other", () => {
   assert.deepEqual(diffManifests(mk({ a: "1" }), mk({ a: "1" }, { npm: "n2", index: "i2" })).other, ["npm", "index"]);
   assert.deepEqual(diffManifests(null, mk({ a: "1" })).other, []);
 });
+test("a change to packages is reported in other", () => {
+  const withPkgs = (packages) => ({ ...mk({ a: "1" }), packages });
+  assert.deepEqual(diffManifests(withPkgs({ "@x/ui": "lib/ui" }), withPkgs({ "@x/ui2": "lib/ui" })).other, ["packages"]);
+  assert.deepEqual(diffManifests(withPkgs({ "@x/ui": "lib/ui" }), withPkgs({ "@x/ui": "lib/ui2" })).other, ["packages"]);
+  assert.deepEqual(diffManifests(withPkgs({ "@x/ui": "lib/ui" }), withPkgs({ "@x/ui": "lib/ui" })).other, []);
+  assert.deepEqual(diffManifests(mk({ a: "1" }), withPkgs({})).other, []);
+  assert.deepEqual(diffManifests(mk({ a: "1" }), { ...mk({ a: "1" }, { npm: "n2" }), packages: { p: "q" } }).other, ["npm", "packages"]);
+});

@@ -6,6 +6,15 @@ import { spawn as nodeSpawn } from "node:child_process";
 const TAIL_LINES = 60;
 const STDERR_DRAIN_MS = 500;
 
+/**
+ * Bazel's progress chatter, left out of a failed build's error text. `INFO: From …`
+ * lines are kept: they head an action's own output.
+ */
+const PROGRESS_LINE = /^(Loading:|Analyzing:|Computing main repo mapping:|\[\d+ \/ \d+\]|INFO: (?!From ))/;
+
+/** @param {string} line */
+const isProgressLine = (line) => line.trim() === "" || PROGRESS_LINE.test(line);
+
 /** @param {NodeJS.ProcessEnv} env */
 function nestedEnv(env) {
   /** @type {NodeJS.ProcessEnv} */
@@ -18,19 +27,21 @@ function nestedEnv(env) {
 }
 
 /**
- * Runs `bazel build <target>`, one at a time. Requests made during a build share a
+ * Runs `bazel build <bazelArgs> <target>`, one at a time. Requests made during a build share a
  * single pending build that starts when the current one ends.
- * @param {{ workspaceDir: string, target: string, bazel?: string, spawn?: Function,
- *   waitingAfterMs?: number, onWaiting?: () => void }} opts
+ * @param {{ workspaceDir: string, target: string, bazel?: string, bazelArgs?: string[], spawn?: Function,
+ *   waitingAfterMs?: number, onWaiting?: () => void, onAnalysisDiscarded?: () => void }} opts
  * @returns {{ request(): Promise<BuildResult> }}
  */
 export function createBuilder({
   workspaceDir,
   target,
   bazel = "bazel",
+  bazelArgs = [],
   spawn = nodeSpawn,
   waitingAfterMs = 2000,
   onWaiting = () => {},
+  onAnalysisDiscarded = () => {},
 }) {
   /** @type {Promise<BuildResult> | null} */
   let running = null;
@@ -43,7 +54,7 @@ export function createBuilder({
     return new Promise((resolve) => {
       let child;
       try {
-        child = spawn(bazel, ["build", target], {
+        child = spawn(bazel, ["build", ...bazelArgs, target], {
           cwd: workspaceDir,
           env: nestedEnv(process.env),
           stdio: ["ignore", "ignore", "pipe"],
@@ -61,6 +72,7 @@ export function createBuilder({
       let partial = "";
       let allText = "";
       let progressed = false;
+      let discarded = false;
 
       const timer = setTimeout(() => {
         if (!progressed && allText.includes("Another command")) onWaiting();
@@ -68,9 +80,15 @@ export function createBuilder({
 
       /** @param {string} line */
       const pushLine = (line) => {
-        lines.push(line);
-        if (lines.length > TAIL_LINES) lines = lines.slice(-TAIL_LINES);
+        if (!isProgressLine(line)) {
+          lines.push(line);
+          if (lines.length > TAIL_LINES) lines = lines.slice(-TAIL_LINES);
+        }
         if (line.includes("Analyzing") || line.includes("Loading")) progressed = true;
+        if (!discarded && line.includes("discarding analysis cache")) {
+          discarded = true;
+          onAnalysisDiscarded();
+        }
       };
 
       child.stderr.on("data", (/** @type {Buffer | string} */ chunk) => {
@@ -84,13 +102,15 @@ export function createBuilder({
       // `exit` can fire before stderr has drained; wait for its `end` (capped, since
       // a grandchild holding the pipe open would keep it from ending) before
       // reading the tail.
-      child.on("exit", (/** @type {number | null} */ code) => {
+      child.on("exit", (/** @type {number | null} */ code, /** @type {string | null} */ signal) => {
         clearTimeout(timer);
         const finish = () => {
           if (partial) pushLine(partial);
           partial = "";
           const ms = Math.round(performance.now() - started);
-          resolve(code === 0 ? { ok: true, ms } : { ok: false, error: lines.join("\n"), ms });
+          // A killed Bazel may print nothing but progress; say how it ended.
+          const error = lines.join("\n") || `bazel build exited (code ${code ?? "none"}, signal ${signal ?? "none"})`;
+          resolve(code === 0 ? { ok: true, ms } : { ok: false, error, ms });
         };
         const stderr = child.stderr;
         if (!stderr || stderr.readableEnded !== false) {
