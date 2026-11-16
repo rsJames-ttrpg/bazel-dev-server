@@ -122,7 +122,8 @@ test("an unresolved bare specifier suggests npm_imports", async (t) => {
 });
 test("first build after a failure sends ok even with no changes", async (t) => {
   const { root, driver } = await fixture();
-  const s = createServer({ driver, executionRoot: root, port: 0, log: () => {}, appLabel: "//app:app" });
+  const lines = [];
+  const s = createServer({ driver, executionRoot: root, port: 0, log: (l) => lines.push(l), appLabel: "//app:app" });
   const port = await s.listen();
   t.after(() => s.close());
   const ws = new (await import("ws")).WebSocket(`ws://localhost:${port}/@dev/ws`);
@@ -134,6 +135,7 @@ test("first build after a failure sends ok even with no changes", async (t) => {
   driver.emit("built", { manifest: driver.manifest, changed: [], added: [], removed: [] });
   await new Promise((r) => setTimeout(r, 50));
   assert.deepEqual(got.map((g) => g.type), ["error", "ok"]);
+  assert.ok(lines.includes("ok: overlay cleared"), `log lines: ${JSON.stringify(lines)}`);
 });
 test("update for refresh modules, reload otherwise, ok after failure", async (t) => {
   const { root, driver } = await fixture();

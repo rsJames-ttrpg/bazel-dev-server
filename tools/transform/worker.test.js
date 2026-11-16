@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -56,4 +56,26 @@ test("one-shot worker transforms a css file into css, module and meta", async ()
   assert.ok(existsSync(out.out));
   assert.match(readFileSync(out.css, "utf8"), /color:\s*red/);
   assert.equal(JSON.parse(readFileSync(out.meta, "utf8")).kind, "css");
+});
+
+test("css module class names hash from the key, not the source path", async () => {
+  /** @param {string} sub */
+  async function run(sub) {
+    const dir = mkdtempSync(join(tmpdir(), "worker-cssmod-"));
+    const srcDir = join(dir, sub);
+    mkdirSync(srcDir, { recursive: true });
+    const src = join(srcDir, "x.module.css");
+    writeFileSync(src, ".title { color: red }\n");
+    const out = { out: join(dir, "x.module.css.js"), meta: join(dir, "x.module.css.js.meta.json"), css: join(dir, "x.out.css") };
+    const child = spawn(process.execPath, [resolve("tools/transform/worker.js"), "--src", src, "--out", out.out, "--meta", out.meta, "--css-out", out.css, "--key", "app/x.module.css", "--dev", "false", "--tsconfig", resolve("tsconfig.json")], {
+      env: { ...process.env, BAZEL_BINDIR: "." },
+      stdio: ["ignore", "inherit", "inherit"],
+    });
+    assert.equal(await new Promise((res) => child.on("close", res)), 0);
+    return { meta: JSON.parse(readFileSync(out.meta, "utf8")), code: readFileSync(out.out, "utf8") };
+  }
+  const a = await run("app");
+  const b = await run("bazel-out/k8-fastbuild/bin/app");
+  assert.deepEqual(a.meta.exports, b.meta.exports);
+  assert.match(a.code, /^import "\.\/x\.module\.css";/);
 });

@@ -163,6 +163,7 @@ export function createServer({ driver, executionRoot, port, log, appLabel }) {
       broadcast(msg);
       if (msg.type === "update") log(`update: ${msg.modules.length} modules`);
       else if (msg.type === "reload") log(`reload: ${msg.reason}`);
+      else if (msg.type === "ok") log("ok: overlay cleared");
       const ms = performance.now() - arrived;
       if (ms > 10) log(`pushed in ${Math.round(ms)}ms`);
     });

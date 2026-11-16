@@ -28,7 +28,7 @@ bazel test //examples/hello:hello.typecheck
 
 Each `.css` source is processed by Lightning CSS into a `.css` output plus a `.css.js` module. Import a plain stylesheet for its side effect, as `examples/shared/ui/Button.tsx` does with `import "./button.css";`.
 
-A `*.module.css` file is a CSS module. Its default export maps each class to a hashed name, so `.title` in `App.module.css` is used as `className={styles.title}` and renders as `_41Zueq_title`. Lightning CSS's default pattern, a hash of the file name followed by the local name, is applied in the transform, which the dev and production configurations share, so the exported names are the same in both. The production stylesheet uses the same names: esbuild treats the processed `.module.css` as plain CSS and never renames classes. A class that uses `composes` exports its own hashed name followed by the composed ones, separated by spaces.
+A `*.module.css` file is a CSS module. Its default export maps each class to a hashed name, so `.title` in `App.module.css` is used as `className={styles.title}` and renders as `_41Zueq_title`. Lightning CSS's default pattern, a hash of the file name followed by the local name, is applied with the source's workspace-relative path as the file name in the transform, which the dev and production configurations share, so the exported names are the same in both. The production stylesheet uses the same names: esbuild treats the processed `.module.css` as plain CSS and never renames classes. A class that uses `composes` exports its own hashed name followed by the composed ones, separated by spaces.
 
 In dev, evaluating the `.css.js` module puts the stylesheet in a `<style data-dev-css="<key>">` element in `<head>`. In the production bundle, esbuild collects every imported stylesheet into `main.css`, and `index.html` gets a `<link rel="stylesheet" href="./main.css">`. An app without CSS has no `main.css` and no link.
 
@@ -46,7 +46,8 @@ Replace the label with your own `<name>.dev`. The dev configuration is reached o
 - `built in <n>ms (bazel <m>ms): <k> modules changed` means a save triggered one nested `bazel build` of `<name>.manifest.dev`. `n` is the total time, `m` the time spent in Bazel, `k` the number of modules whose output changed. `, <a> added`, `, <r> removed`, `, npm changed` or `, index changed` is appended when modules were added or removed or the npm prebundles or `index.html` changed.
 - `update: <k> modules` means the browser was sent `update` for `k` changed modules and hot-updates them in place.
 - `reload: <reason>` means the browser was sent `reload` and reloads the page. The reason names what forced it, for example `examples/hello/src/main.tsx cannot hot-update`, `1 removed` or `index changed`.
-- `pushed in <n>ms` follows `update:` or `reload:` only when sending took more than 10 ms after the build finished; normally it is absent.
+- `ok: overlay cleared` means the browser was sent `ok`: the first successful build after a failure changed nothing it needs, so it only clears the error overlay.
+- `pushed in <n>ms` follows `update:`, `reload:` or `ok:` only when sending took more than 10 ms after the build finished; normally it is absent.
 - `build failed in <n>ms` means the build failed, for example on a syntax error. The browser receives `error` and shows an overlay with Bazel's output.
 - `cannot resolve "<spec>" from <key>; add it to npm_imports of <label>` is logged once for a bare import that is not in `npm_imports`. A relative or workspace-package import that matches no module logs `cannot resolve "<spec>" from <key>` without the suffix. Either way the import is served untouched, so it fails in the browser.
 - `waiting for Bazel server (another command holds the lock)` means another Bazel command in the workspace holds the lock; the build starts when it finishes.
@@ -64,7 +65,7 @@ The browser holds a WebSocket at `/@dev/ws` and receives four messages:
 | `error` | The build failed. | Shows the overlay with Bazel's output. The page keeps running. |
 
 - A module whose exports are all React components hot-updates. Component state survives: in `examples/hello`, a counter at 3 stays at 3 after the `<h1>` text changes.
-- A stylesheet, plain or `*.module.css`, hot-updates: the new `.css.js` module replaces its `<style>` element and state survives.
+- A stylesheet, plain or `*.module.css`, hot-updates: the new `.css.js` module replaces its `<style>` element and state survives. The exception is a `*.module.css` whose class map changes, because a class was added, renamed or removed: importers still hold the old map, so the browser logs `[dev] reload: <key>: class names changed` to its console and reloads. A stylesheet the page has not loaded, such as one belonging to a lazy route that is not mounted yet, is skipped rather than injected.
 - The entry module and any module that is not a component module reload the page, even for a comment-only edit, because its output changes.
 - If a module that was a component module starts exporting something that is not a component, or its exports change shape, the browser reloads after re-importing it and logs `[dev] reload: <key>: <reason>` to its console.
 
@@ -76,7 +77,7 @@ Run on `examples/hello` in headless Chromium 157 driven over the DevTools protoc
 2. Change the `<h1>` text in `App.tsx`: `update: 1 modules`; new text, still `count is 3`, marker kept.
 3. Change `.title` to `teal` in `App.module.css`: `update: 1 modules`; color `rgb(0, 128, 128)`, still `count is 3`, marker kept.
 4. Add a comment to `main.tsx`, then `console.log("x")`: each logs `reload: examples/hello/src/main.tsx cannot hot-update`; the marker is gone, the counter is back to 0, and the console shows `x`.
-5. Break `App.tsx` syntax: `build failed in 142ms` and the overlay appears. Revert to the last good content: `built in 168ms (bazel 168ms): 0 modules changed`, the server sends `ok` (which it does not log), the overlay goes and the counter is kept. Break it again and fix it with new text: `update: 1 modules`, the overlay goes, the new text shows and the counter is kept.
+5. Break `App.tsx` syntax: `build failed in 142ms` and the overlay appears. Revert to the last good content: `built in 168ms (bazel 168ms): 0 modules changed`, then `ok: overlay cleared`; the overlay goes and the counter is kept. Break it again and fix it with new text: `update: 1 modules`, the overlay goes, the new text shows and the counter is kept.
 
 ## Warm save-to-update time
 
@@ -109,6 +110,7 @@ The counter stayed at its value through all ten saves.
 - SWC strips types without checking them, so a type error does not fail the dev build; run `bazel test :<name>.typecheck`.
 - No Svelte.
 - Sources other than `.ts`, `.tsx` and `.css`, such as images and fonts, are not handled.
+- Stylesheets imported from npm packages, such as `import "some-lib/dist/style.css"`, are not supported: esbuild bundles them into `main.css` in production, but dev cannot serve them, so a `.css` entry in `npm_imports` fails the build.
 - The hardening milestone of the design spec is not done: `BUILD` file changes, renames and watcher overflow get no special handling.
 - Linux and macOS only.
 

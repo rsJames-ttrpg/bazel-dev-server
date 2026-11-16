@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { registerExportsForReactRefresh, validateRefreshBoundary } from "./refresh.js";
+import { classMapChanged, registerExportsForReactRefresh, validateRefreshBoundary } from "./refresh.js";
 
 function fakeRuntime() {
   const calls = [];
@@ -30,4 +30,20 @@ test("added or removed export invalidates", () => {
 });
 test("no exports at all invalidates", () => {
   assert.equal(validateRefreshBoundary(fakeRuntime(), {}, {}), "no exports");
+});
+test("class map: same keys and values unchanged", () => {
+  assert.equal(classMapChanged({ title: "_h_title", b: "_h_b _h_a" }, { b: "_h_b _h_a", title: "_h_title" }), false);
+  assert.equal(classMapChanged({}, {}), false);
+});
+test("class map: added, removed, renamed or re-hashed class changed", () => {
+  assert.equal(classMapChanged({ title: "_h_title" }, { title: "_h_title", sub: "_h_sub" }), true);
+  assert.equal(classMapChanged({ title: "_h_title", sub: "_h_sub" }, { title: "_h_title" }), true);
+  assert.equal(classMapChanged({ title: "_h_title" }, { heading: "_h_heading" }), true);
+  assert.equal(classMapChanged({ title: "_h_title" }, { title: "_h_title _h_base" }), true);
+});
+test("class map: non-object treated as empty", () => {
+  assert.equal(classMapChanged(undefined, {}), false);
+  assert.equal(classMapChanged(null, undefined), false);
+  assert.equal(classMapChanged("x", { a: "_h_a" }), true);
+  assert.equal(classMapChanged({ a: "_h_a" }, 1), true);
 });

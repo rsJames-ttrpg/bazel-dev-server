@@ -36,8 +36,11 @@ function handle(rawArgs) {
   const src = readFileSync(flags.src, "utf8");
   const dev = flags.dev === "true";
   if (handlerFor(flags.src).kind === "css") {
+    // Lightning CSS hashes module class names from the filename, so pass the
+    // configuration-independent key: an exec path of a generated source holds
+    // bazel-out/<config>/bin and would give dev and production different names.
     if (flags["css-out"] === undefined) throw new Error("missing --css-out");
-    const { css, code, meta } = transformCss({ code: src, filename: flags.src, key: flags.key, dev });
+    const { css, code, meta } = transformCss({ code: src, filename: flags.key, key: flags.key, dev });
     writeFileSync(flags["css-out"], css);
     writeFileSync(flags.out, code);
     writeFileSync(flags.meta, JSON.stringify(meta));

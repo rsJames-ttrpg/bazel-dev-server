@@ -3,7 +3,7 @@
 // injected into <head> ahead of the entry module, so __devRefresh exists before
 // any app module evaluates.
 import * as RefreshRuntime from "/npm/react-refresh__runtime.js";
-import { registerExportsForReactRefresh, validateRefreshBoundary } from "./refresh.js";
+import { classMapChanged, registerExportsForReactRefresh, validateRefreshBoundary } from "./refresh.js";
 
 const OVERLAY_ID = "__dev_error_overlay";
 
@@ -56,8 +56,18 @@ async function applyUpdate(updates) {
   for (const { key, digest, kind } of updates) {
     const url = `/${key}?v=${digest}`;
     if (kind === "css") {
+      // A stylesheet this page never loaded (a lazy route not yet mounted) stays out.
+      if (!document.head.querySelector(`style[data-dev-css="${CSS.escape(key)}"]`)) continue;
+      // Importers hold the class map of the original /<key> instance, already in
+      // the module map, so this import does not refetch or re-evaluate it.
+      const prevMap = (await import(`/${key}`)).default;
       // Evaluating the new .css.js module replaces its <style> element.
-      await import(url);
+      const nextMap = (await import(url)).default;
+      if (classMapChanged(prevMap, nextMap)) {
+        console.warn(`[dev] reload: ${key}: class names changed`);
+        location.reload();
+        return;
+      }
       continue;
     }
     // A module this page never loaded has nothing to refresh.

@@ -33,3 +33,20 @@ export function validateRefreshBoundary(runtime, prev, next) {
   }
   return names.length ? null : "no exports";
 }
+
+/**
+ * Whether a CSS module's class map differs between two versions. Importers keep
+ * the map they first imported, so any difference needs a reload.
+ * @param {unknown} prev @param {unknown} next
+ * @returns {boolean}
+ */
+export function classMapChanged(prev, next) {
+  /** @param {unknown} v @returns {Record<string, unknown>} */
+  const asMap = (v) => (v !== null && typeof v === "object" ? /** @type {Record<string, unknown>} */ (v) : {});
+  const a = asMap(prev);
+  const b = asMap(next);
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return true;
+  for (const k of keys) if (!Object.prototype.hasOwnProperty.call(b, k) || a[k] !== b[k]) return true;
+  return false;
+}
