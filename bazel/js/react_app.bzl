@@ -34,8 +34,18 @@ def react_app(name, srcs, entry, index_html, npm_imports, npm_deps, deps = [], p
     if "react/jsx-runtime" in npm_imports and "react/jsx-dev-runtime" not in npm_imports:
         npm_imports.append("react/jsx-dev-runtime")
 
-    npm_entries = npm_prebundle(name + ".npm", npm_imports, npm_deps, dev = False)
-    npm_prebundle(name + ".npm.dev", npm_imports, npm_deps, dev = True)
+    npm_prebundle(name + ".npm", npm_imports, npm_deps, dev = False)
+
+    # The dev client imports the Fast Refresh runtime from the dev prebundle
+    # only: its CommonJS entry throws under NODE_ENV=production, which the
+    # prebundle config's build-time require would hit. The dev dict is a
+    # superset of the prod one, so it serves as npm_entries for both configs.
+    npm_entries = npm_prebundle(
+        name + ".npm.dev",
+        npm_imports + ["react-refresh/runtime"],
+        npm_deps + [Label("//:node_modules/react-refresh")],
+        dev = True,
+    )
 
     app_manifest(
         name = name + ".manifest",
