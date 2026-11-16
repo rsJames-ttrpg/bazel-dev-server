@@ -14,12 +14,15 @@ function sortedRecord(o) {
   return Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
 
+/** @param {string[]} xs */
+const sortedUnique = (xs) => [...new Set(xs)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
 /**
- * Pure: assemble the version 2 manifest. Keys are sorted so output is stable.
+ * Pure: assemble the version 3 manifest. Keys are sorted so output is stable.
  * @param {{ pkg: string, entry: string, indexHtml: string, indexDigest: string, modules: ModuleInput[],
- *   npm: { dir: string, digest: string, entries: Record<string, string> }, packages: Record<string, string> }} input
+ *   npm: { dir: string, digest: string, entries: Record<string, string> }, packages: Record<string, string>, watch?: { roots: string[], files: string[] } }} input
  */
-export function buildManifest({ pkg, entry, indexHtml, indexDigest, modules, npm, packages }) {
+export function buildManifest({ pkg, entry, indexHtml, indexDigest, modules, npm, packages, watch }) {
   const sorted = [...modules].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   /** @type {Record<string, { output: string, digest: string, kind: string, refresh: boolean, imports: string[] }>} */
   const out = {};
@@ -27,7 +30,7 @@ export function buildManifest({ pkg, entry, indexHtml, indexDigest, modules, npm
     out[key] = { output, digest: meta.digest, kind: meta.kind ?? "js", refresh: meta.refresh, imports: meta.imports };
   }
   return {
-    version: 2,
+    version: 3,
     package: pkg,
     entry,
     indexHtml,
@@ -35,6 +38,7 @@ export function buildManifest({ pkg, entry, indexHtml, indexDigest, modules, npm
     modules: out,
     npm: { dir: npm.dir, digest: npm.digest, entries: sortedRecord(npm.entries) },
     packages: sortedRecord(packages),
+    watch: { roots: sortedUnique(watch?.roots ?? []), files: sortedUnique(watch?.files ?? []) },
   };
 }
 
@@ -95,6 +99,10 @@ function main(rawArgs) {
   const entries = {};
   /** @type {Record<string, string>} */
   const packages = {};
+  /** @type {string[]} */
+  const watchRoots = [];
+  /** @type {string[]} */
+  const watchFiles = [];
   for (let i = 0; i < args.length; i += 2) {
     const flag = args[i];
     const value = args[i + 1];
@@ -108,6 +116,10 @@ function main(rawArgs) {
     } else if (flag === "--package-root") {
       const [name, dir] = splitEq(value, 2);
       packages[name] = dir;
+    } else if (flag === "--watch-root") {
+      watchRoots.push(value);
+    } else if (flag === "--watch-file") {
+      watchFiles.push(value);
     } else if (["--out", "--package", "--entry", "--index", "--npm-dir"].includes(flag)) {
       single[flag] = value;
     } else {
@@ -123,6 +135,7 @@ function main(rawArgs) {
     modules,
     npm: { dir: npmDir, digest: dirDigest(npmDir), entries },
     packages,
+    watch: { roots: watchRoots, files: watchFiles },
   });
   writeFileSync(single["--out"], JSON.stringify(manifest, null, 2) + "\n");
 }

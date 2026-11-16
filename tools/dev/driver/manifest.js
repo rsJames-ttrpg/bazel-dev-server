@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 /**
  * @typedef {{ output: string, digest: string, refresh: boolean, imports: string[] }} ManifestModule
- * @typedef {{ version: number, modules: Record<string, ManifestModule> } & Record<string, any>} Manifest
+ * @typedef {{ version: number, modules: Record<string, ManifestModule>, watch?: { roots: string[], files: string[] } } & Record<string, any>} Manifest
  */
 
 /** @param {string} path @returns {Promise<Manifest>} */

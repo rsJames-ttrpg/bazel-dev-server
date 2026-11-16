@@ -14,6 +14,13 @@ def _app_manifest_impl(ctx):
     args.add("--entry", ctx.label.package + "/" + ctx.attr.entry)
     args.add("--index", ctx.file.index_html.path)
 
+    roots = {ctx.file.index_html.owner.package: None}
+    for m in info.modules:
+        roots[m.src.owner.package] = None
+    for root in sorted(roots.keys()):
+        args.add("--watch-root", root)
+    args.add("--watch-file", ctx.file.tsconfig.short_path)
+
     inputs = [ctx.file.index_html]
     for m in info.modules:
         args.add("--module", "%s=%s=%s" % (m.src.short_path, m.out.path, m.meta.path))
@@ -53,6 +60,7 @@ app_manifest = rule(
         "modules": attr.label(mandatory = True, providers = [ModulesInfo]),
         "entry": attr.string(mandatory = True),
         "index_html": attr.label(mandatory = True, allow_single_file = True),
+        "tsconfig": attr.label(default = "//:tsconfig.json", allow_single_file = True),
         "npm_dir": attr.label(allow_files = True),
         "npm_entries": attr.string_dict(),
         "_writer": attr.label(
