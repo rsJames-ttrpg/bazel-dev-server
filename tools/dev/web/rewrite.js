@@ -37,11 +37,29 @@ export function isBareSpecifier(spec, manifest) {
   return !Object.keys(manifest.packages).some((name) => spec === name || spec.startsWith(name + "/"));
 }
 
+/** @type {WeakMap<Manifest, [string, string][]>} */
+const sortedPackagesCache = new WeakMap();
+
+/**
+ * The manifest's packages, longest name first (as in TypeScript's paths), sorted
+ * once per manifest object: resolve() runs once per import, and a large app has
+ * tens of thousands of imports across hundreds of packages.
+ * @param {Manifest} manifest @returns {[string, string][]}
+ */
+function sortedPackages(manifest) {
+  let sorted = sortedPackagesCache.get(manifest);
+  if (sorted === undefined) {
+    sorted = Object.entries(manifest.packages).sort((a, b) => b[0].length - a[0].length);
+    sortedPackagesCache.set(manifest, sorted);
+  }
+  return sorted;
+}
+
 /** @param {string} spec @param {string} key @param {Manifest} manifest @returns {string | null} */
 function resolve(spec, key, manifest) {
   const file = manifest.npm.entries[spec];
   if (file !== undefined) return `/npm/${file}`;
-  for (const [name, root] of Object.entries(manifest.packages).sort((a, b) => b[0].length - a[0].length)) {
+  for (const [name, root] of sortedPackages(manifest)) {
     if (spec === name || spec.startsWith(name + "/")) {
       const found = findKey(path.posix.normalize(root + spec.slice(name.length)), manifest);
       return found && `/${found}`;
